@@ -1,4 +1,4 @@
-export const SERVICES: string[] = ['Corte de Cabelo', 'Coloração', 'Manicure', 'Pedicure', 'Tratamento Facial', 'Massagem', 'Manutenção', 'Banho de Gel', 'Fibra de Vidro'];
+export const SERVICES: string[] = ['Banho de Gel', 'Esmaltação em gel', 'Fibra de Vidro', 'Manicure', 'Manutenção', 'Pedicure', 'Pé+Mão', 'Sobrancelha', 'Spa dos Pés'];
 
 export const MONTHS: string[] = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
