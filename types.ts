@@ -4,9 +4,8 @@ export interface Appointment {
   id: number;
   clientName: string;
   clientPhone: string;
-  service: string;
+  services: { name: string; value: number }[];
   datetime: Date;
-  value: number;
   status: AppointmentStatus;
   observations?: string;
   reminderSent?: boolean;
@@ -16,6 +15,7 @@ export interface ModalInfo {
   isOpen: boolean;
   title: string;
   message: string;
+  onConfirm?: () => void;
 }
 
 export interface Client {

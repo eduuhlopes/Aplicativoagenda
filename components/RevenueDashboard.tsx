@@ -19,9 +19,10 @@ const RevenueCard: React.FC<{ title: string; amount: number; colorClass: string 
     );
 };
 
-const NailPolishIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 inline-block ml-2 text-pink-400" viewBox="0 0 20 20" fill="currentColor">
-      <path d="M10 3.5a1.5 1.5 0 013 0V4a1 1 0 001 1h1a1 1 0 011 1v2a1 1 0 01-1 1h-1a1 1 0 00-1-1V5.5a.5.5 0 00-1 0V10a1 1 0 001 1h.5a.5.5 0 010 1H10a.5.5 0 010-1H11a1 1 0 001-1V5.5a1.5 1.5 0 01-3 0V10a1 1 0 001 1h.5a.5.5 0 010 1H7a.5.5 0 010-1H8a1 1 0 001-1V5.5A1.5 1.5 0 0110 3.5zM5 11.5a1.5 1.5 0 013 0V13a1 1 0 001 1h1a1 1 0 011 1v2a1 1 0 01-1 1h-1a1 1 0 00-1-1v-1.5a.5.5 0 00-1 0V17a1 1 0 001 1h.5a.5.5 0 010 1H5.5a.5.5 0 010-1H6a1 1 0 001-1v-1.5a1.5 1.5 0 01-3 0V10a1 1 0 00-1-1H3a1 1 0 01-1-1V7a1 1 0 011-1h1a1 1 0 001 1v1.5z" />
+const ChartBarIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 inline-block ml-3 text-pink-400" viewBox="0 0 20 20" fill="currentColor">
+      <path fillRule="evenodd" d="M12 7a1 1 0 11-2 0 1 1 0 012 0zm-4 4a1 1 0 100 2h8a1 1 0 100-2H8z" clipRule="evenodd" />
+      <path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" />
     </svg>
 );
 
@@ -29,9 +30,9 @@ const NailPolishIcon = () => (
 const RevenueDashboard: React.FC<RevenueDashboardProps> = ({ projectedRevenue, monthlyRevenue }) => {
     return (
         <div className="flex flex-col h-full">
-             <h2 className="text-2xl font-bold text-purple-800 text-center mb-4 flex items-center justify-center">
+             <h2 className="text-3xl font-bold text-purple-800 text-center mb-4 flex items-center justify-center">
                 Painel Financeiro
-                <NailPolishIcon />
+                <ChartBarIcon />
             </h2>
             <div className="space-y-6">
                 <RevenueCard

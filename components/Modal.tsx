@@ -31,7 +31,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, title, message, onClose, onConfir
                 onClick={(e) => e.stopPropagation()}
             >
                 <h3 className="text-2xl font-bold text-purple-800 mb-4">{title}</h3>
-                <p className="text-md text-pink-800 mb-6">{message}</p>
+                <p className="text-md text-purple-700 mb-6">{message}</p>
                 <div className="flex justify-end gap-3">
                     {onConfirm && (
                         <button

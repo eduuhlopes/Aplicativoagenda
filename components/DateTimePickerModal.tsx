@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { TIMES, MONTHS } from '../constants';
-import { BlockedSlot } from '../types';
+import { BlockedSlot, Appointment } from '../types';
 
 interface DateTimePickerModalProps {
     isOpen: boolean;
@@ -9,9 +9,11 @@ interface DateTimePickerModalProps {
     initialDate?: Date | null;
     blockedSlots?: BlockedSlot[];
     showBlockDayToggle?: boolean;
+    appointments?: Appointment[];
+    editingAppointmentId?: number | null;
 }
 
-const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClose, onConfirm, initialDate, blockedSlots = [], showBlockDayToggle = false }) => {
+const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClose, onConfirm, initialDate, blockedSlots = [], showBlockDayToggle = false, appointments = [], editingAppointmentId = null }) => {
     const [viewDate, setViewDate] = useState(initialDate || new Date());
     const [selectedDay, setSelectedDay] = useState<Date | null>(initialDate || null);
     
@@ -24,7 +26,7 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
     useEffect(() => {
         if (isOpen) {
             const initial = initialDate || new Date();
-            const initialHour = initialDate ? `${String(initialDate.getHours()).padStart(2, '0')}:00` : null;
+            const initialHour = initialDate ? `${String(initialDate.getHours()).padStart(2, '0')}:${String(initialDate.getMinutes()).padStart(2, '0')}` : null;
             setViewDate(initial);
             setSelectedDay(initialDate || null);
             setBlockFullDay(false);
@@ -64,7 +66,7 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
             let dayClasses = isPast || isBlocked ? `${baseClasses} text-gray-400 cursor-not-allowed` : `${baseClasses} cursor-pointer hover:bg-pink-200`;
             
             if (isBlocked) {
-                dayClasses += ' bg-red-200 line-through';
+                dayClasses += ' bg-rose-200 line-through';
             }
             if (isSelected) {
                 dayClasses = `${baseClasses} bg-pink-500 text-white font-bold`;
@@ -117,8 +119,8 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
         }
         
         if (finalStartTime) {
-            const [hour] = finalStartTime.split(':').map(Number);
-            finalDate.setHours(hour, 0, 0, 0);
+            const [hour, minute] = finalStartTime.split(':').map(Number);
+            finalDate.setHours(hour, minute, 0, 0);
         }
         
         onConfirm({ date: finalDate, isFullDay: finalIsFullDay, startTime: finalStartTime, endTime: finalEndTime });
@@ -135,14 +137,17 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
     const today = new Date();
     const isTodaySelected = selectedDay?.toDateString() === today.toDateString();
 
+    const selectClasses = "w-full h-11 px-3 py-2 bg-pink-50 border border-pink-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-pink-400";
+
+
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
-            <div className="bg-pink-50 rounded-2xl shadow-2xl p-6 m-4 max-w-lg w-full transform transition-transform" onClick={e => e.stopPropagation()}>
+            <div className="bg-white rounded-2xl shadow-2xl p-6 m-4 max-w-lg w-full transform transition-transform" onClick={e => e.stopPropagation()}>
                 <div className="mb-4">
                     <div className="flex items-center justify-between mb-2">
-                        <button onClick={() => handleMonthChange(-1)} className="p-2 rounded-full hover:bg-pink-200 transition">&lt;</button>
+                        <button onClick={() => handleMonthChange(-1)} className="p-2 rounded-full hover:bg-pink-100 transition">&lt;</button>
                         <h4 className="text-lg font-bold text-purple-800">{`${MONTHS[viewDate.getMonth()]} ${viewDate.getFullYear()}`}</h4>
-                        <button onClick={() => handleMonthChange(1)} className="p-2 rounded-full hover:bg-pink-200 transition">&gt;</button>
+                        <button onClick={() => handleMonthChange(1)} className="p-2 rounded-full hover:bg-pink-100 transition">&gt;</button>
                     </div>
                     <div className="grid grid-cols-7 gap-1 text-center text-sm text-pink-800 mb-2">
                         {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map(d => <div key={d}>{d}</div>)}
@@ -182,10 +187,25 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
                                             setSelectedEndTime(null);
                                         }
                                     }}
-                                    className="w-full h-11 px-3 py-2 bg-pink-100 border border-pink-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
+                                    className={selectClasses}
                                 >
                                     <option value="">--:--</option>
-                                    {TIMES.map(time => <option key={time} value={time}>{time}</option>)}
+                                    {TIMES.map(time => {
+                                        const isBlocked = selectedDay && blockedSlots.some(s => {
+                                            if (new Date(s.date).toDateString() !== selectedDay.toDateString()) return false;
+                                            if (s.isFullDay) return true;
+                                            if (!s.startTime) return false;
+                                            if (s.endTime) return time >= s.startTime && time < s.endTime;
+                                            return time === s.startTime;
+                                        });
+
+                                        const isScheduled = selectedDay && appointments.some(appt => 
+                                            new Date(appt.datetime).toDateString() === selectedDay.toDateString() &&
+                                            `${String(new Date(appt.datetime).getHours()).padStart(2, '0')}:${String(new Date(appt.datetime).getMinutes()).padStart(2, '0')}` === time
+                                        );
+
+                                        return <option key={time} value={time} disabled={isBlocked || isScheduled}>{time}</option>;
+                                    })}
                                 </select>
                             </div>
                              <div className="flex-1">
@@ -194,11 +214,25 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
                                     id="end-time" 
                                     value={selectedEndTime || ''} 
                                     onChange={(e) => setSelectedEndTime(e.target.value)}
-                                    className="w-full h-11 px-3 py-2 bg-pink-100 border border-pink-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
+                                    className={selectClasses}
                                     disabled={!selectedStartTime}
                                 >
                                     <option value="">--:--</option>
-                                    {filteredEndTimes.map(time => <option key={time} value={time}>{time}</option>)}
+                                    {filteredEndTimes.map(time => {
+                                        const isBlocked = selectedDay && blockedSlots.some(s => {
+                                            if (new Date(s.date).toDateString() !== selectedDay.toDateString()) return false;
+                                            if (s.isFullDay) return true;
+                                            if (!s.startTime) return false;
+                                            if (s.endTime) return time >= s.startTime && time < s.endTime;
+                                            return time === s.startTime;
+                                        });
+
+                                        const isScheduled = selectedDay && appointments.some(appt => 
+                                            new Date(appt.datetime).toDateString() === selectedDay.toDateString() &&
+                                            `${String(new Date(appt.datetime).getHours()).padStart(2, '0')}:${String(new Date(appt.datetime).getMinutes()).padStart(2, '0')}` === time
+                                        );
+                                        return <option key={time} value={time} disabled={isBlocked || isScheduled}>{time}</option>;
+                                    })}
                                 </select>
                             </div>
                         </div>
@@ -210,8 +244,8 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
                         <h4 className="text-lg font-bold text-purple-800 mb-2 text-center">Selecione o Horário</h4>
                         <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 max-h-40 overflow-y-auto">
                             {TIMES.map(time => {
-                                const [hour] = time.split(':').map(Number);
-                                const isPast = isTodaySelected && hour < today.getHours();
+                                const [hour, minute] = time.split(':').map(Number);
+                                const isPast = isTodaySelected && (hour < today.getHours() || (hour === today.getHours() && minute < today.getMinutes()));
                                 const isSelected = time === selectedTime;
 
                                 const isBlocked = selectedDay && blockedSlots.some(s => {
@@ -224,19 +258,32 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
                                     }
                                     return time === s.startTime;
                                 });
+
+                                const isScheduled = selectedDay && appointments.some(appt => 
+                                    appt.id !== editingAppointmentId &&
+                                    new Date(appt.datetime).toDateString() === selectedDay.toDateString() &&
+                                    `${String(new Date(appt.datetime).getHours()).padStart(2, '0')}:${String(new Date(appt.datetime).getMinutes()).padStart(2, '0')}` === time
+                                );
+
+                                const isDisabled = isPast || isBlocked || isScheduled;
                                 
                                 const baseClasses = "p-2 rounded-lg text-center transition-colors";
-                                let timeClasses = isPast || isBlocked ? `${baseClasses} bg-gray-200 text-gray-400 cursor-not-allowed` : `${baseClasses} bg-pink-100 cursor-pointer hover:bg-pink-200`;
-                                
-                                if (isBlocked) {
-                                    timeClasses += ' line-through';
-                                }
+                                let timeClasses = `${baseClasses} `;
+
                                 if (isSelected) {
-                                    timeClasses = `${baseClasses} bg-pink-500 text-white font-bold`;
+                                    timeClasses += 'bg-pink-500 text-white font-bold';
+                                } else if (isBlocked) {
+                                    timeClasses += 'bg-rose-200 text-gray-500 line-through cursor-not-allowed';
+                                } else if (isScheduled) {
+                                    timeClasses += 'bg-amber-200 text-gray-500 cursor-not-allowed';
+                                } else if (isPast) {
+                                    timeClasses += 'bg-gray-200 text-gray-400 cursor-not-allowed';
+                                } else {
+                                    timeClasses += 'bg-pink-100 cursor-pointer hover:bg-pink-200';
                                 }
 
                                 return (
-                                    <div key={time} className={timeClasses} onClick={() => !(isPast || isBlocked) && setSelectedTime(time)}>
+                                    <div key={time} className={timeClasses} onClick={() => !isDisabled && setSelectedTime(time)}>
                                         {time}
                                     </div>
                                 );

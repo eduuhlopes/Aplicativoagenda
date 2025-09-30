@@ -7,6 +7,7 @@ import Modal from './components/Modal';
 import RevenueDashboard from './components/RevenueDashboard';
 import ClientList from './components/ClientList';
 import DateTimePickerModal from './components/DateTimePickerModal';
+import BackupRestore from './components/BackupRestore';
 
 const AgendaManagementIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 inline-block ml-2 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -14,17 +15,12 @@ const AgendaManagementIcon = () => (
     </svg>
 );
 
-const BackupIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 inline-block ml-2 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-    </svg>
-);
-
 const AgendaManagement: React.FC<{
     blockedSlots: BlockedSlot[];
     onBlockSlot: (data: { date: Date, isFullDay: boolean, startTime?: string, endTime?: string }) => void;
     onUnblockSlot: (id: number) => void;
-}> = ({ blockedSlots, onBlockSlot, onUnblockSlot }) => {
+    appointments: Appointment[];
+}> = ({ blockedSlots, onBlockSlot, onUnblockSlot, appointments }) => {
     const [isPickerOpen, setIsPickerOpen] = useState(false);
 
     const handleDateSelectAndBlock = (data: { date: Date, isFullDay: boolean, startTime?: string, endTime?: string }) => {
@@ -78,49 +74,38 @@ const AgendaManagement: React.FC<{
                 onConfirm={handleDateSelectAndBlock}
                 showBlockDayToggle={true}
                 blockedSlots={blockedSlots}
+                appointments={appointments}
             />
         </>
     );
 };
 
-const BackupManagement: React.FC<{
-    onExport: () => void;
-    onImport: (event: React.ChangeEvent<HTMLInputElement>) => void;
-}> = ({ onExport, onImport }) => {
-    const fileInputRef = useRef<HTMLInputElement>(null);
+
+const ReminderBanner: React.FC<{ reminders: Appointment[]; onSend: () => void; onClose: () => void; }> = ({ reminders, onSend, onClose }) => {
+    if (reminders.length === 0) return null;
 
     return (
-         <div className="border-t-2 border-pink-200 pt-8 mt-8">
-            <h2 className="text-2xl font-bold text-purple-800 text-center mb-4 flex items-center justify-center">
-                Backup e Restauração
-                <BackupIcon />
-            </h2>
-            <div className="flex flex-col sm:flex-row gap-4">
-                <button
-                    onClick={onExport}
-                    className="flex-1 py-3 px-4 bg-blue-500 text-white font-bold text-lg rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-transform transform hover:scale-105"
-                >
-                    Exportar Dados
-                </button>
-                <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex-1 py-3 px-4 bg-green-500 text-white font-bold text-lg rounded-lg shadow-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-transform transform hover:scale-105"
-                >
-                    Importar Dados
-                </button>
-                <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={onImport}
-                    className="hidden"
-                    accept=".json"
-                />
+        <div className="bg-teal-100 border-t-4 border-teal-500 rounded-b text-teal-900 px-4 py-3 shadow-md my-4 relative" role="alert">
+            <div className="flex items-center">
+                <div className="py-1"><svg className="fill-current h-6 w-6 text-teal-500 mr-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zM9 5v6h2V5H9zm0 8h2v2H9v-2z"/></svg></div>
+                <div>
+                    <p className="font-bold">Lembretes Automáticos Prontos</p>
+                    <p className="text-sm">Você tem {reminders.length} agendamento(s) que precisam de um lembrete.</p>
+                </div>
+                <div className="ml-auto">
+                    <button 
+                        onClick={onSend}
+                        className="bg-teal-500 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded"
+                    >
+                        Enviar Agora
+                    </button>
+                </div>
             </div>
-            <p className="text-sm text-center text-pink-600 italic mt-4">
-                Salve seus dados em um arquivo seguro ou restaure de um backup anterior.
-            </p>
+             <button onClick={onClose} className="absolute top-0 bottom-0 right-0 px-4 py-3">
+                <svg className="fill-current h-6 w-6 text-teal-500" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l2.758-3.15-2.759-3.152a1.2 1.2 0 1 1 1.697-1.697L10 8.183l2.651-3.031a1.2 1.2 0 1 1 1.697 1.697l-2.758 3.152 2.758 3.15a1.2 1.2 0 0 1 0 1.698z"/></svg>
+            </button>
         </div>
-    )
+    );
 };
 
 
@@ -131,6 +116,7 @@ const App: React.FC = () => {
         isOpen: false,
         title: '',
         message: '',
+        onConfirm: undefined,
     });
     const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
     const [activeView, setActiveView] = useState<'appointments' | 'clients'>('appointments');
@@ -138,17 +124,32 @@ const App: React.FC = () => {
     const [isNotificationPopoverOpen, setIsNotificationPopoverOpen] = useState(false);
     const [highlightedAppointmentId, setHighlightedAppointmentId] = useState<number | null>(null);
     const [removingAppointmentId, setRemovingAppointmentId] = useState<number | null>(null);
+    const [remindersToSend, setRemindersToSend] = useState<Appointment[]>([]);
 
+    const nextId = useRef(Date.now());
+    const backupTimeoutRef = useRef<number | null>(null);
+
+    const showModal = (title: string, message: string, onConfirm?: () => void) => {
+        setModalInfo({ isOpen: true, title, message, onConfirm });
+    };
+
+    const closeModal = () => {
+        setModalInfo({ isOpen: false, title: '', message: '', onConfirm: undefined });
+    };
+    
     // Load data from localStorage on initial render
     useEffect(() => {
         try {
-            const savedAppointments = localStorage.getItem('appointments');
-            if (savedAppointments) {
-                setAppointments(JSON.parse(savedAppointments).map((a: any) => ({ ...a, datetime: new Date(a.datetime) })));
+            const storedAppointments = localStorage.getItem('spa-appointments');
+            if (storedAppointments) {
+                const parsed = JSON.parse(storedAppointments).map((a: any) => ({ ...a, id: Number(a.id), datetime: new Date(a.datetime) }));
+                setAppointments(parsed);
             }
-            const savedBlockedSlots = localStorage.getItem('blockedSlots');
-            if (savedBlockedSlots) {
-                setBlockedSlots(JSON.parse(savedBlockedSlots).map((s: any) => ({ ...s, date: new Date(s.date) })));
+
+            const storedBlockedSlots = localStorage.getItem('spa-blocked-slots');
+            if (storedBlockedSlots) {
+                const parsed = JSON.parse(storedBlockedSlots).map((s: any) => ({ ...s, id: Number(s.id), date: new Date(s.date) }));
+                setBlockedSlots(parsed);
             }
         } catch (error) {
             console.error("Failed to load data from localStorage", error);
@@ -156,31 +157,65 @@ const App: React.FC = () => {
         }
     }, []);
 
-    // Save data to localStorage whenever it changes
+    // Save appointments to localStorage whenever they change
     useEffect(() => {
         try {
-            localStorage.setItem('appointments', JSON.stringify(appointments));
+            localStorage.setItem('spa-appointments', JSON.stringify(appointments));
         } catch (error) {
             console.error("Failed to save appointments to localStorage", error);
         }
     }, [appointments]);
 
+    // Save blocked slots to localStorage whenever they change
     useEffect(() => {
         try {
-            localStorage.setItem('blockedSlots', JSON.stringify(blockedSlots));
+            localStorage.setItem('spa-blocked-slots', JSON.stringify(blockedSlots));
         } catch (error) {
             console.error("Failed to save blocked slots to localStorage", error);
         }
     }, [blockedSlots]);
+    
+    // Automatic backup logic
+    useEffect(() => {
+        if (backupTimeoutRef.current) {
+            clearTimeout(backupTimeoutRef.current);
+        }
 
+        backupTimeoutRef.current = window.setTimeout(() => {
+            if (appointments.length === 0 && blockedSlots.length === 0) {
+                return; // Don't backup empty state
+            }
 
-    const showModal = (title: string, message: string) => {
-        setModalInfo({ isOpen: true, title, message });
-    };
+            try {
+                const today = new Date();
+                const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                const backupKey = `spa-autobackup-${todayString}`;
 
-    const closeModal = () => {
-        setModalInfo({ isOpen: false, title: '', message: '' });
-    };
+                const backupData = { appointments, blockedSlots };
+                localStorage.setItem(backupKey, JSON.stringify(backupData));
+                
+                // Clean up old backups, keeping the last 7
+                const allBackupKeys = Object.keys(localStorage)
+                    .filter(key => key.startsWith('spa-autobackup-'))
+                    .sort() // Sorts YYYY-MM-DD strings correctly
+                    .reverse(); // Newest first
+
+                if (allBackupKeys.length > 7) {
+                    const keysToRemove = allBackupKeys.slice(7);
+                    keysToRemove.forEach(key => localStorage.removeItem(key));
+                }
+            } catch (error) {
+                console.error("Failed to create automatic backup", error);
+            }
+        }, 2000); // Debounce backup for 2 seconds after data change
+
+        return () => {
+            if (backupTimeoutRef.current) {
+                clearTimeout(backupTimeoutRef.current);
+            }
+        };
+    }, [appointments, blockedSlots]);
+
 
      useEffect(() => {
         const now = new Date();
@@ -193,6 +228,34 @@ const App: React.FC = () => {
         );
         setNotificationAppointments(upcoming);
     }, [appointments]);
+
+     // Automatic reminder checking
+    useEffect(() => {
+        const checkReminders = () => {
+            const now = new Date();
+            const lowerBound = new Date(now.getTime() + 23 * 60 * 60 * 1000);
+            const upperBound = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+            const dueForReminder = appointments.filter(appt => {
+                if (appt.status !== 'scheduled' || appt.reminderSent) {
+                    return false;
+                }
+                const apptTime = new Date(appt.datetime);
+                return apptTime > lowerBound && apptTime <= upperBound;
+            });
+            
+            setRemindersToSend(prev => {
+                const existingIds = new Set(prev.map(r => r.id));
+                const newReminders = dueForReminder.filter(r => !existingIds.has(r.id));
+                return [...prev, ...newReminders];
+            });
+        };
+
+        const intervalId = setInterval(checkReminders, 60 * 1000); // Check every minute
+
+        return () => clearInterval(intervalId);
+    }, [appointments]);
+
 
     useEffect(() => {
         if (highlightedAppointmentId) {
@@ -223,7 +286,7 @@ const App: React.FC = () => {
             return "Não é possível agendar horários no passado.";
         }
 
-        const appointmentTime = `${String(datetime.getHours()).padStart(2, '0')}:00`;
+        const appointmentTime = `${String(datetime.getHours()).padStart(2, '0')}:${String(datetime.getMinutes()).padStart(2, '0')}`;
         const appointmentDateStr = datetime.toDateString();
 
         for (const slot of blockedSlots) {
@@ -248,7 +311,7 @@ const App: React.FC = () => {
         return null;
     }, [blockedSlots, appointments]);
 
-    const handleBlockSlot = useCallback((data: { date: Date, isFullDay: boolean, startTime?: string, endTime?: string }) => {
+    const handleBlockSlot = useCallback(async (data: { date: Date, isFullDay: boolean, startTime?: string, endTime?: string }) => {
         const newSlotDateStr = data.date.toDateString();
         const conflict = blockedSlots.some(s => {
             if (new Date(s.date).toDateString() !== newSlotDateStr) return false;
@@ -268,12 +331,16 @@ const App: React.FC = () => {
             return;
         }
 
-        const newSlot: BlockedSlot = { ...data, id: Date.now() };
+        const newSlot: BlockedSlot = {
+            ...data,
+            id: nextId.current++,
+        };
+    
         setBlockedSlots(prev => [...prev, newSlot].sort((a,b) => a.date.getTime() - b.date.getTime()));
         showModal("Sucesso", "Horário bloqueado com sucesso.");
     }, [blockedSlots]);
 
-    const handleUnblockSlot = useCallback((id: number) => {
+    const handleUnblockSlot = useCallback(async (id: number) => {
         const slotToUnblock = blockedSlots.find(s => s.id === id);
         setBlockedSlots(prev => prev.filter(s => s.id !== id));
         showModal("Sucesso", `O bloqueio para ${slotToUnblock ? new Date(slotToUnblock.date).toLocaleDateString('pt-BR') : ''} foi removido.`);
@@ -288,8 +355,8 @@ const App: React.FC = () => {
         
         const newAppointment: Appointment = {
             ...newAppointmentData,
-            id: Date.now(),
-            status: 'scheduled'
+            id: nextId.current++,
+            status: 'scheduled',
         };
 
         setAppointments(prev => [...prev, newAppointment].sort((a, b) => a.datetime.getTime() - b.datetime.getTime()));
@@ -297,10 +364,12 @@ const App: React.FC = () => {
         showModal("Sucesso", `Agendamento para ${newAppointment.clientName} marcado com sucesso.`);
         
         const sanitizedClientPhone = newAppointment.clientPhone.replace(/\D/g, '');
-        const clientMessage = `Olá, ${newAppointment.clientName}! ✨\n\nSeu agendamento no salão foi confirmado com sucesso!\n\n*Serviço:* ${newAppointment.service}\n*Valor:* R$ ${newAppointment.value.toFixed(2)}\n*Data:* ${new Date(newAppointment.datetime).toLocaleDateString('pt-BR')}\n*Hora:* ${new Date(newAppointment.datetime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}\n\nMal podemos esperar para te ver! 🌸`;
+        const servicesText = newAppointment.services.map(s => s.name).join(', ');
+        const totalValue = newAppointment.services.reduce((sum, s) => sum + s.value, 0);
+        const clientMessage = `Olá, ${newAppointment.clientName}! ✨\n\nSeu agendamento no salão foi confirmado com sucesso!\n\n*Serviço(s):* ${servicesText}\n*Valor Total:* R$ ${totalValue.toFixed(2)}\n*Data:* ${new Date(newAppointment.datetime).toLocaleDateString('pt-BR')}\n*Hora:* ${new Date(newAppointment.datetime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}\n\nMal podemos esperar para te ver! 🌸`;
         window.open(`https://wa.me/55${sanitizedClientPhone}?text=${encodeURIComponent(clientMessage)}`, '_blank');
         return true;
-    }, [checkAppointmentConflict]);
+    }, [checkAppointmentConflict, appointments, blockedSlots]);
 
     const handleCancelAppointment = useCallback(async (appointmentId: number) => {
         const appointmentToCancel = appointments.find(appt => appt.id === appointmentId);
@@ -329,90 +398,151 @@ const App: React.FC = () => {
             showModal("Horário Indisponível", conflictMessage);
             return false;
         }
+
         setAppointments(prev => prev.map(appt => appt.id === updatedAppointment.id ? updatedAppointment : appt).sort((a, b) => a.datetime.getTime() - b.datetime.getTime()));
         setEditingAppointment(null);
         setHighlightedAppointmentId(updatedAppointment.id);
         showModal("Sucesso", "Agendamento atualizado com sucesso!");
         return true;
-    }, [checkAppointmentConflict, appointments]);
+    }, [checkAppointmentConflict, appointments, blockedSlots]);
 
-    const handleUpdateAppointmentStatus = useCallback((appointmentId: number, status: 'completed' | 'scheduled') => {
-        setAppointments(prev =>
-            prev.map(appt =>
-                appt.id === appointmentId ? { ...appt, status } : appt
-            )
-        );
-    }, []);
 
     const handleCompleteAppointment = useCallback(async (appointmentId: number) => {
         const completedAppt = appointments.find(a => a.id === appointmentId);
         if (completedAppt) {
             setRemovingAppointmentId(appointmentId);
-            handleUpdateAppointmentStatus(appointmentId, 'completed');
+            const updatedAppointment = { ...completedAppt, status: 'completed' as 'completed' };
+            
             setTimeout(() => {
+                 setAppointments(prev => prev.map(a => a.id === appointmentId ? updatedAppointment : a));
                 setRemovingAppointmentId(null);
                 showModal("Finalizado", `O agendamento de ${completedAppt.clientName} foi marcado como finalizado.`);
             }, 500);
         }
-    }, [appointments, handleUpdateAppointmentStatus]);
+    }, [appointments]);
 
-    const handleSendReminder = useCallback((appointmentId: number) => {
-        setAppointments(prev => prev.map(appt =>
-            appt.id === appointmentId ? { ...appt, reminderSent: true } : appt
-        ));
-        showModal("Lembrete Agendado", "O lembrete foi marcado como agendado para envio.");
-    }, []);
+    const sendWhatsAppMessage = (appointment: Appointment) => {
+        const sanitizedClientPhone = appointment.clientPhone.replace(/\D/g, '');
+        const servicesText = appointment.services.map(s => s.name).join(', ');
+        const reminderMessage = `Olá, ${appointment.clientName}! 🌸 Passando para te lembrar do seu horário amanhã!\n\n*Serviço(s):* ${servicesText}\n*Data:* ${new Date(appointment.datetime).toLocaleDateString('pt-BR')}\n*Hora:* ${new Date(appointment.datetime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}\n\nQualquer imprevisto, por favor, nos avise com antecedência. Estamos te esperando! ✨`;
+        window.open(`https://wa.me/55${sanitizedClientPhone}?text=${encodeURIComponent(reminderMessage)}`, '_blank');
+    };
+
+    const handleSendAllReminders = useCallback(() => {
+        if (remindersToSend.length === 0) return;
+
+        const sentIds = new Set<number>();
+        remindersToSend.forEach(appt => {
+            sendWhatsAppMessage(appt);
+            sentIds.add(appt.id);
+        });
+
+        setAppointments(prev =>
+            prev.map(appt =>
+                sentIds.has(appt.id) ? { ...appt, reminderSent: true } : appt
+            )
+        );
+
+        showModal("Sucesso", `${remindersToSend.length} lembrete(s) foram enviados.`);
+        setRemindersToSend([]);
+    }, [remindersToSend, appointments]);
+
+    const handleSendReminder = useCallback(async (appointmentId: number) => {
+        const apptToSendReminder = appointments.find(a => a.id === appointmentId);
+        if (!apptToSendReminder) return;
+
+        sendWhatsAppMessage(apptToSendReminder);
     
-    const handleExportData = () => {
+        const updatedAppointment = { ...apptToSendReminder, reminderSent: true };
+
+        setAppointments(prev => prev.map(appt => appt.id === appointmentId ? updatedAppointment : appt));
+        showModal("Lembrete Enviado", `O lembrete para ${apptToSendReminder.clientName} foi enviado.`);
+    }, [appointments]);
+
+     const handleExportData = useCallback(() => {
         try {
-            const dataStr = JSON.stringify({ appointments, blockedSlots }, null, 2);
-            const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-            const exportFileDefaultName = `backup_agenda_${new Date().toISOString().slice(0, 10)}.json`;
-            const linkElement = document.createElement('a');
-            linkElement.setAttribute('href', dataUri);
-            linkElement.setAttribute('download', exportFileDefaultName);
-            linkElement.click();
-            showModal("Exportado", "Seus dados foram exportados com sucesso!");
+            const dataToExport = {
+                appointments: appointments,
+                blockedSlots: blockedSlots,
+            };
+            const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
+                JSON.stringify(dataToExport, null, 2)
+            )}`;
+            const link = document.createElement("a");
+            link.href = jsonString;
+            const date = new Date().toISOString().slice(0, 10);
+            link.download = `backup-spaco-delas-${date}.json`;
+            link.click();
+            showModal("Sucesso", "Backup dos dados exportado com sucesso!");
         } catch (error) {
-            showModal("Erro", "Não foi possível exportar os dados.");
-            console.error(error);
+            console.error("Failed to export data", error);
+            showModal("Erro", "Ocorreu um erro ao exportar os dados.");
         }
-    };
-    
-    const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
+    }, [appointments, blockedSlots]);
 
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const text = e.target?.result;
-                if (typeof text !== 'string') throw new Error("File content is not readable text.");
-                const data = JSON.parse(text);
-
-                if (data.appointments && Array.isArray(data.appointments) && data.blockedSlots && Array.isArray(data.blockedSlots)) {
-                    setAppointments(data.appointments.map((a: any) => ({ ...a, datetime: new Date(a.datetime) })));
-                    setBlockedSlots(data.blockedSlots.map((s: any) => ({ ...s, date: new Date(s.date) })));
-                    showModal("Importado", "Dados restaurados com sucesso a partir do backup!");
-                } else {
-                    throw new Error("Arquivo de backup inválido ou mal formatado.");
-                }
-            } catch (error) {
-                showModal("Erro de Importação", error instanceof Error ? error.message : "Não foi possível ler o arquivo de backup.");
-                console.error(error);
-            } finally {
-                event.target.value = ''; // Reset file input
+    const handleImportData = useCallback((data: any) => {
+        try {
+            if (!data || !Array.isArray(data.appointments) || !Array.isArray(data.blockedSlots)) {
+                throw new Error("Formato de arquivo inválido.");
             }
-        };
-        reader.readAsText(file);
-    };
+
+            const importedAppointments = data.appointments.map((a: any) => {
+                const appointmentData: any = {
+                    ...a,
+                    id: Number(a.id),
+                    datetime: new Date(a.datetime),
+                };
+    
+                // Backward compatibility for old backup format
+                if (a.service && typeof a.value !== 'undefined' && !a.services) {
+                    appointmentData.services = [{ name: a.service, value: Number(a.value) }];
+                    delete appointmentData.service;
+                    delete appointmentData.value;
+                } else if (!Array.isArray(a.services)) {
+                    // Handle cases where services might be malformed
+                    appointmentData.services = [];
+                }
+    
+                return appointmentData;
+            });
+
+            const importedBlockedSlots = data.blockedSlots.map((s: any) => ({
+                ...s,
+                id: Number(s.id),
+                date: new Date(s.date),
+            }));
+
+            setAppointments(importedAppointments);
+            setBlockedSlots(importedBlockedSlots);
+            
+            const maxApptId = Math.max(0, ...importedAppointments.map((a: Appointment) => a.id));
+            const maxSlotId = Math.max(0, ...importedBlockedSlots.map((s: BlockedSlot) => s.id));
+            nextId.current = Math.max(Date.now(), maxApptId, maxSlotId) + 1;
+
+            showModal("Sucesso", "Dados importados e restaurados com sucesso!");
+        } catch (error) {
+            console.error("Failed to import data", error);
+            showModal("Erro", `Não foi possível importar os dados. Verifique o arquivo de backup. Detalhe: ${(error as Error).message}`);
+        }
+    }, []);
+
+    const handleRestoreFromBackup = useCallback((backupData: any) => {
+        showModal(
+            "Confirmar Restauração",
+            "Você tem certeza que deseja restaurar este backup? Os dados atuais serão substituídos. Esta ação não pode ser desfeita.",
+            () => {
+                handleImportData(backupData);
+                closeModal();
+            }
+        );
+    }, [handleImportData]);
 
     const upcomingAppointments = useMemo(() => {
         return appointments.filter(appt => appt.status === 'scheduled');
     }, [appointments]);
 
     const projectedRevenue = useMemo(() => {
-        return upcomingAppointments.reduce((total, appt) => total + appt.value, 0);
+        return upcomingAppointments.reduce((total, appt) => total + appt.services.reduce((subtotal, s) => subtotal + s.value, 0), 0);
     }, [upcomingAppointments]);
 
     const monthlyRevenue = useMemo(() => {
@@ -427,7 +557,7 @@ const App: React.FC = () => {
                 apptDate.getMonth() === currentMonth &&
                 apptDate.getFullYear() === currentYear
             ) {
-                return total + appt.value;
+                return total + appt.services.reduce((subtotal, s) => subtotal + s.value, 0);
             }
             return total;
         }, 0);
@@ -443,7 +573,7 @@ const App: React.FC = () => {
             clientData[appt.clientPhone].name = appt.clientName;
 
             if (appt.status === 'completed') {
-                clientData[appt.clientPhone].totalSpent += appt.value;
+                clientData[appt.clientPhone].totalSpent += appt.services.reduce((subtotal, s) => subtotal + s.value, 0);
                 const apptDate = new Date(appt.datetime);
                 const currentLastVisit = clientData[appt.clientPhone].lastVisit;
                 if (!currentLastVisit || apptDate > currentLastVisit) {
@@ -468,26 +598,31 @@ const App: React.FC = () => {
     const TabButton: React.FC<{ label: string; viewName: 'appointments' | 'clients' }> = ({ label, viewName }) => (
         <button
             onClick={() => setActiveView(viewName)}
-            className={`px-6 py-3 text-lg font-bold rounded-t-lg transition-colors duration-300 focus:outline-none ${
+            className={`px-6 py-3 text-lg font-bold rounded-t-lg transition-colors duration-300 focus:outline-none border-b-4 ${
                 activeView === viewName
-                    ? 'bg-white/80 text-pink-600 shadow-inner'
-                    : 'bg-transparent text-pink-800 hover:bg-white/40'
+                    ? 'border-pink-500 text-pink-600'
+                    : 'border-transparent text-purple-400 hover:border-pink-300 hover:text-pink-500'
             }`}
+            style={{ fontFamily: "'Lato', sans-serif" }}
         >
             {label}
         </button>
     );
 
-    const sparkleSvg = `<svg width="20" height="20" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 0 L55.9 44.1 L100 50 L55.9 55.9 L50 100 L44.1 55.9 L0 50 L44.1 44.1 Z" fill="rgba(236, 72, 153, 0.08)" /></svg>`;
-    const bgStyle = { backgroundImage: `url('data:image/svg+xml;base64,${btoa(sparkleSvg)}')` };
+    const panelClasses = "bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-pink-100";
 
     return (
-        <div className="min-h-screen bg-pink-50 text-pink-900 font-sans p-4 sm:p-6 md:p-8" style={bgStyle}>
+        <div className="min-h-screen p-4 sm:p-6 md:p-8">
             <div className="max-w-7xl mx-auto relative">
                 <Header 
                     notificationAppointments={notificationAppointments}
                     isNotificationPopoverOpen={isNotificationPopoverOpen}
                     onToggleNotificationPopover={handleToggleNotificationPopover}
+                />
+                 <ReminderBanner 
+                    reminders={remindersToSend}
+                    onSend={handleSendAllReminders}
+                    onClose={() => setRemindersToSend([])}
                 />
                 
                 <div className="mt-8 flex justify-center border-b-2 border-pink-200">
@@ -498,16 +633,17 @@ const App: React.FC = () => {
                 <main className="mt-2">
                     {activeView === 'appointments' && (
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-6">
-                            <div className="bg-white/70 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-pink-100">
+                            <div className={panelClasses}>
                                 <AppointmentForm 
                                     onSchedule={handleScheduleAppointment}
                                     appointmentToEdit={editingAppointment}
                                     onUpdate={handleUpdateAppointment}
                                     onCancelEdit={handleCancelEdit}
                                     blockedSlots={blockedSlots}
+                                    appointments={appointments}
                                 />
                             </div>
-                            <div className="bg-white/70 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-pink-100">
+                            <div className={panelClasses}>
                                 <AppointmentList 
                                     appointments={upcomingAppointments} 
                                     onCancel={handleCancelAppointment}
@@ -518,7 +654,7 @@ const App: React.FC = () => {
                                     removingAppointmentId={removingAppointmentId}
                                 />
                             </div>
-                            <div className="bg-white/70 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-pink-100">
+                            <div className={panelClasses}>
                                 <RevenueDashboard
                                     projectedRevenue={projectedRevenue}
                                     monthlyRevenue={monthlyRevenue}
@@ -527,16 +663,18 @@ const App: React.FC = () => {
                                     blockedSlots={blockedSlots}
                                     onBlockSlot={handleBlockSlot}
                                     onUnblockSlot={handleUnblockSlot}
+                                    appointments={appointments}
                                 />
-                                <BackupManagement 
+                                <BackupRestore
                                     onExport={handleExportData}
                                     onImport={handleImportData}
+                                    onRestore={handleRestoreFromBackup}
                                 />
                             </div>
                         </div>
                     )}
                      {activeView === 'clients' && (
-                        <div className="bg-white/70 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-pink-100 mt-6">
+                        <div className={`${panelClasses} mt-6`}>
                             <ClientList clients={clients} />
                         </div>
                     )}
@@ -547,6 +685,7 @@ const App: React.FC = () => {
                 title={modalInfo.title}
                 message={modalInfo.message}
                 onClose={closeModal}
+                onConfirm={modalInfo.onConfirm}
             />
         </div>
     );

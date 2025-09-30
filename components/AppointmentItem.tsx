@@ -30,20 +30,21 @@ const AppointmentItem: React.FC<AppointmentItemProps> = ({ appointment, onCancel
         minute: '2-digit',
         hour12: false
     });
-    const formattedValue = appointment.value.toLocaleString('pt-BR', {
+    
+    const totalValue = appointment.services.reduce((sum, service) => sum + service.value, 0);
+    const formattedValue = totalValue.toLocaleString('pt-BR', {
         style: 'currency',
         currency: 'BRL'
     });
 
     const now = new Date();
-    const isToday = appointment.datetime.toDateString() === now.toDateString();
     const isFuture = appointment.datetime > now;
 
 
     return (
         <div className={`bg-white p-4 rounded-lg shadow-md border border-pink-200 flex flex-col gap-3 ${isRemoving ? 'animate-fade-out' : 'transition-all hover:shadow-lg hover:border-pink-300'} ${isHighlighted ? 'animate-highlight' : ''}`}>
             <div className="flex-grow">
-                <p className="font-bold text-lg text-purple-900">{appointment.service}</p>
+                <p className="font-bold text-lg text-purple-900">{appointment.services.map(s => s.name).join(' + ')}</p>
                 <p className="text-md font-semibold text-purple-700">Cliente: {appointment.clientName}</p>
                 {appointment.observations && (
                      <p className="text-sm text-gray-600 bg-gray-100 p-2 rounded-md mt-2 italic">
@@ -55,16 +56,16 @@ const AppointmentItem: React.FC<AppointmentItemProps> = ({ appointment, onCancel
                 <p className="text-sm text-pink-700">{formattedTime}</p>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
-                 {isToday && isFuture && (
+                 {isFuture && (
                     <>
                         {appointment.reminderSent ? (
-                             <div className="px-4 py-2 text-sm font-semibold text-gray-500 italic flex items-center bg-gray-100 rounded-lg">Lembrete Agendado ✔️</div>
+                             <div className="px-4 py-2 text-sm font-semibold text-gray-500 italic flex items-center bg-gray-100 rounded-lg">Lembrete Enviado ✔️</div>
                         ) : (
                             <button
                                 onClick={() => onSendReminder(appointment.id)}
                                 className="px-4 py-2 bg-green-500 text-white font-semibold rounded-lg shadow-sm hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors text-sm flex items-center"
                             >
-                                <WhatsAppIcon /> Agendar Lembrete
+                                <WhatsAppIcon /> Enviar Lembrete
                             </button>
                         )}
                     </>
@@ -77,13 +78,13 @@ const AppointmentItem: React.FC<AppointmentItemProps> = ({ appointment, onCancel
                 </button>
                  <button
                     onClick={() => onComplete(appointment.id)}
-                    className="px-4 py-2 bg-pink-500 text-white font-semibold rounded-lg shadow-sm hover:bg-pink-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500 transition-colors text-sm"
+                    className="px-4 py-2 bg-purple-500 text-white font-semibold rounded-lg shadow-sm hover:bg-purple-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-colors text-sm"
                 >
                     Finalizar
                 </button>
                 <button
                     onClick={() => onCancel(appointment.id)}
-                    className="px-4 py-2 bg-red-400 text-white font-semibold rounded-lg shadow-sm hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors text-sm"
+                    className="px-4 py-2 bg-rose-500 text-white font-semibold rounded-lg shadow-sm hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 transition-colors text-sm"
                 >
                     Cancelar
                 </button>
