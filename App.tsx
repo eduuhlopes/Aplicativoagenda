@@ -8,6 +8,7 @@ import RevenueDashboard from './components/RevenueDashboard';
 import ClientList from './components/ClientList';
 import DateTimePickerModal from './components/DateTimePickerModal';
 import BackupRestore from './components/BackupRestore';
+import { SERVICES } from './constants';
 
 const AgendaManagementIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 inline-block ml-2 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -142,7 +143,24 @@ const App: React.FC = () => {
         try {
             const storedAppointments = localStorage.getItem('spa-appointments');
             if (storedAppointments) {
-                const parsed = JSON.parse(storedAppointments).map((a: any) => ({ ...a, id: Number(a.id), datetime: new Date(a.datetime) }));
+                const parsed = JSON.parse(storedAppointments).map((a: any) => {
+                    const datetime = new Date(a.datetime);
+                    let endTime = a.endTime ? new Date(a.endTime) : null;
+
+                    const servicesWithDuration = (a.services || []).map((s: any) => {
+                        if (typeof s.duration !== 'number') {
+                            const serviceDef = SERVICES.find(def => def.name === s.name);
+                            return { ...s, duration: serviceDef?.duration || 30 };
+                        }
+                        return s;
+                    });
+                    
+                    if (!endTime) { // Backward compatibility for old data
+                        const totalDuration = servicesWithDuration.reduce((sum: number, s: any) => sum + s.duration, 0);
+                        endTime = new Date(datetime.getTime() + totalDuration * 60 * 1000);
+                    }
+                    return { ...a, id: Number(a.id), datetime, endTime, services: servicesWithDuration };
+                });
                 setAppointments(parsed);
             }
 
@@ -280,31 +298,48 @@ const App: React.FC = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [isNotificationPopoverOpen]);
     
-     const checkAppointmentConflict = useCallback((datetime: Date, appointmentIdToIgnore: number | null = null): string | null => {
+     const checkAppointmentConflict = useCallback((appointmentData: Omit<Appointment, 'id' | 'status' | 'reminderSent'>, appointmentIdToIgnore: number | null = null): string | null => {
+        const { datetime, endTime } = appointmentData;
         const now = new Date();
         if (datetime < now && (!appointmentIdToIgnore || (now.getTime() - datetime.getTime()) > 60000)) {
             return "Não é possível agendar horários no passado.";
         }
 
-        const appointmentTime = `${String(datetime.getHours()).padStart(2, '0')}:${String(datetime.getMinutes()).padStart(2, '0')}`;
-        const appointmentDateStr = datetime.toDateString();
+        const newStartTime = datetime.getTime();
+        const newEndTime = endTime.getTime();
+        const newDateStr = datetime.toDateString();
 
         for (const slot of blockedSlots) {
-            if (new Date(slot.date).toDateString() !== appointmentDateStr) continue;
+            if (new Date(slot.date).toDateString() !== newDateStr) continue;
+            
             if (slot.isFullDay) return "Este dia está totalmente bloqueado.";
-            if (slot.endTime) {
-                if (appointmentTime >= slot.startTime! && appointmentTime < slot.endTime) {
-                    return `Este horário está indisponível (bloqueado de ${slot.startTime} às ${slot.endTime}).`;
+
+            if (slot.startTime) {
+                const slotDate = new Date(slot.date);
+                const [startHour, startMinute] = slot.startTime.split(':').map(Number);
+                const slotStartTime = new Date(slotDate.getFullYear(), slotDate.getMonth(), slotDate.getDate(), startHour, startMinute).getTime();
+                
+                const slotEndTime = slot.endTime 
+                    ? new Date(slotDate.getFullYear(), slotDate.getMonth(), slotDate.getDate(), ...slot.endTime.split(':').map(Number)).getTime()
+                    : slotStartTime + 30 * 60 * 1000; // Assume 30 min if no end time
+                
+                if (newStartTime < slotEndTime && newEndTime > slotStartTime) {
+                     return `Conflito com horário bloqueado: ${slot.startTime}${slot.endTime ? ` às ${slot.endTime}`: ''}.`;
                 }
-            } else if (appointmentTime === slot.startTime) {
-                return `O horário das ${slot.startTime} está bloqueado.`;
             }
         }
         
         for (const appt of appointments) {
             if (appt.id === appointmentIdToIgnore) continue;
-            if (appt.datetime.getTime() === datetime.getTime()) {
-                 return `Já existe um agendamento para ${appt.clientName} neste mesmo horário.`;
+            if (new Date(appt.datetime).toDateString() !== newDateStr) continue;
+
+            const existingStartTime = appt.datetime.getTime();
+            const existingEndTime = appt.endTime 
+                ? appt.endTime.getTime()
+                : existingStartTime + appt.services.reduce((sum, s) => sum + (s.duration || 30), 0) * 60 * 1000;
+
+            if (newStartTime < existingEndTime && newEndTime > existingStartTime) {
+                 return `Conflito com agendamento de ${appt.clientName} às ${appt.datetime.toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}.`;
             }
         }
 
@@ -347,7 +382,7 @@ const App: React.FC = () => {
     }, [blockedSlots]);
 
     const handleScheduleAppointment = useCallback(async (newAppointmentData: Omit<Appointment, 'id' | 'status'>): Promise<boolean> => {
-        const conflictMessage = checkAppointmentConflict(newAppointmentData.datetime);
+        const conflictMessage = checkAppointmentConflict(newAppointmentData);
         if (conflictMessage) {
             showModal("Horário Indisponível", conflictMessage);
             return false;
@@ -369,7 +404,7 @@ const App: React.FC = () => {
         const clientMessage = `Olá, ${newAppointment.clientName}! ✨\n\nSeu agendamento no salão foi confirmado com sucesso!\n\n*Serviço(s):* ${servicesText}\n*Valor Total:* R$ ${totalValue.toFixed(2)}\n*Data:* ${new Date(newAppointment.datetime).toLocaleDateString('pt-BR')}\n*Hora:* ${new Date(newAppointment.datetime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}\n\nMal podemos esperar para te ver! 🌸`;
         window.open(`https://wa.me/55${sanitizedClientPhone}?text=${encodeURIComponent(clientMessage)}`, '_blank');
         return true;
-    }, [checkAppointmentConflict, appointments, blockedSlots]);
+    }, [checkAppointmentConflict, appointments]);
 
     const handleCancelAppointment = useCallback(async (appointmentId: number) => {
         const appointmentToCancel = appointments.find(appt => appt.id === appointmentId);
@@ -393,7 +428,7 @@ const App: React.FC = () => {
     }, []);
 
     const handleUpdateAppointment = useCallback(async (updatedAppointment: Appointment): Promise<boolean> => {
-        const conflictMessage = checkAppointmentConflict(updatedAppointment.datetime, updatedAppointment.id);
+        const conflictMessage = checkAppointmentConflict(updatedAppointment, updatedAppointment.id);
         if (conflictMessage) {
             showModal("Horário Indisponível", conflictMessage);
             return false;
@@ -404,7 +439,7 @@ const App: React.FC = () => {
         setHighlightedAppointmentId(updatedAppointment.id);
         showModal("Sucesso", "Agendamento atualizado com sucesso!");
         return true;
-    }, [checkAppointmentConflict, appointments, blockedSlots]);
+    }, [checkAppointmentConflict, appointments]);
 
 
     const handleCompleteAppointment = useCallback(async (appointmentId: number) => {
@@ -490,19 +525,35 @@ const App: React.FC = () => {
                 const appointmentData: any = {
                     ...a,
                     id: Number(a.id),
-                    datetime: new Date(a.datetime),
                 };
     
-                // Backward compatibility for old backup format
+                const datetime = new Date(a.datetime);
+                appointmentData.datetime = datetime;
+                let endTime = a.endTime ? new Date(a.endTime) : null;
+
                 if (a.service && typeof a.value !== 'undefined' && !a.services) {
-                    appointmentData.services = [{ name: a.service, value: Number(a.value) }];
+                    const serviceDef = SERVICES.find(def => def.name === a.service);
+                    appointmentData.services = [{ name: a.service, value: Number(a.value), duration: serviceDef?.duration || 30 }];
                     delete appointmentData.service;
                     delete appointmentData.value;
-                } else if (!Array.isArray(a.services)) {
-                    // Handle cases where services might be malformed
+                } else if (Array.isArray(a.services)) {
+                    appointmentData.services = a.services.map((s: any) => {
+                        if (typeof s.duration !== 'number') {
+                            const serviceDef = SERVICES.find(def => def.name === s.name);
+                            return { ...s, duration: serviceDef?.duration || 30 };
+                        }
+                        return s;
+                    });
+                } else {
                     appointmentData.services = [];
                 }
     
+                if (!endTime) {
+                    const totalDuration = appointmentData.services.reduce((sum: number, s: any) => sum + (s.duration || 30), 0);
+                    endTime = new Date(datetime.getTime() + totalDuration * 60 * 1000);
+                }
+                appointmentData.endTime = endTime;
+
                 return appointmentData;
             });
 
@@ -639,8 +690,6 @@ const App: React.FC = () => {
                                     appointmentToEdit={editingAppointment}
                                     onUpdate={handleUpdateAppointment}
                                     onCancelEdit={handleCancelEdit}
-                                    blockedSlots={blockedSlots}
-                                    appointments={appointments}
                                 />
                             </div>
                             <div className={panelClasses}>

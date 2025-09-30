@@ -25,10 +25,13 @@ const AppointmentItem: React.FC<AppointmentItemProps> = ({ appointment, onCancel
         month: '2-digit',
         day: '2-digit'
     });
-    const formattedTime = appointment.datetime.toLocaleTimeString('pt-BR', {
+    const formattedStartTime = appointment.datetime.toLocaleTimeString('pt-BR', {
         hour: '2-digit',
         minute: '2-digit',
-        hour12: false
+    });
+    const formattedEndTime = appointment.endTime.toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit'
     });
     
     const totalValue = appointment.services.reduce((sum, service) => sum + service.value, 0);
@@ -52,8 +55,10 @@ const AppointmentItem: React.FC<AppointmentItemProps> = ({ appointment, onCancel
                     </p>
                 )}
                  <p className="font-bold text-lg text-green-600 mt-2">{formattedValue}</p>
-                <p className="text-sm text-pink-700 mt-2">{formattedDate}</p>
-                <p className="text-sm text-pink-700">{formattedTime}</p>
+                <div className="flex items-center gap-2 mt-2">
+                    <p className="text-sm text-pink-700 font-medium">{formattedDate}</p>
+                    <p className="text-sm text-pink-700 font-bold bg-pink-100 px-2 py-0.5 rounded">{formattedStartTime} - {formattedEndTime}</p>
+                </div>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
                  {isFuture && (

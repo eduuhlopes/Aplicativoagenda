@@ -4,8 +4,9 @@ export interface Appointment {
   id: number;
   clientName: string;
   clientPhone: string;
-  services: { name: string; value: number }[];
-  datetime: Date;
+  services: { name: string; value: number; duration: number }[];
+  datetime: Date; // Start time
+  endTime: Date; // End time
   status: AppointmentStatus;
   observations?: string;
   reminderSent?: boolean;

@@ -1,8 +1,6 @@
 import React from 'react';
 import { Appointment } from '../types';
 
-const logoBase64 = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTUwIDEwIEMgMjAgMjAsIDIwIDgwLCA1MCA5MCBDIDgwIDgwLCA4MCAyMCwgNTAgMTAgWiBNIDUwIDI1IEMgMzUgMzUsIDM1IDY1LCA1MCA3NSBDIDY1IDY1LCA2NSAzNSwgNTAgMjUgWiIgZmlsbD0iI2MwODRmYyIvPjwvc3ZnPg==";
-
 interface HeaderProps {
     notificationAppointments: Appointment[];
     isNotificationPopoverOpen: boolean;
@@ -30,7 +28,7 @@ const formatRelativeDateTime = (date: Date): string => {
 const Header: React.FC<HeaderProps> = ({ notificationAppointments, isNotificationPopoverOpen, onToggleNotificationPopover }) => (
     <header className="relative flex flex-col sm:flex-row items-center justify-between py-4">
         <div className="flex items-center gap-4">
-            <img src={logoBase64} alt="Spaço Delas Logo" className="h-14 w-14" />
+            <img src="/logo.svg" alt="Spaço Delas Logo" className="h-14 w-14" />
             <div className="text-left">
                 <h1 className="text-4xl md:text-5xl font-bold text-purple-800 tracking-tight">
                     Spaço Delas

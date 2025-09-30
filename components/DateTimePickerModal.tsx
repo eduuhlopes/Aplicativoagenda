@@ -11,9 +11,10 @@ interface DateTimePickerModalProps {
     showBlockDayToggle?: boolean;
     appointments?: Appointment[];
     editingAppointmentId?: number | null;
+    totalDuration?: number;
 }
 
-const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClose, onConfirm, initialDate, blockedSlots = [], showBlockDayToggle = false, appointments = [], editingAppointmentId = null }) => {
+const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClose, onConfirm, initialDate, blockedSlots = [], showBlockDayToggle = false, appointments = [], editingAppointmentId = null, totalDuration = 30 }) => {
     const [viewDate, setViewDate] = useState(initialDate || new Date());
     const [selectedDay, setSelectedDay] = useState<Date | null>(initialDate || null);
     
@@ -132,6 +133,64 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
     }, [selectedStartTime]);
 
 
+    const timeIsAvailable = useMemo(() => {
+        if (!selectedDay) return () => false;
+
+        const dayStr = selectedDay.toDateString();
+        const unavailableSlots = new Set<string>();
+
+        blockedSlots.forEach(slot => {
+            if (new Date(slot.date).toDateString() !== dayStr) return;
+            if (slot.isFullDay) {
+                TIMES.forEach(time => unavailableSlots.add(time));
+                return;
+            }
+            if (slot.startTime) {
+                const start = slot.startTime;
+                const end = slot.endTime || start;
+                TIMES.forEach(time => {
+                    if (time >= start && time < end) {
+                        unavailableSlots.add(time);
+                    } else if (!slot.endTime && time === start) {
+                        unavailableSlots.add(time);
+                    }
+                });
+            }
+        });
+
+        appointments.forEach(appt => {
+            if (appt.id === editingAppointmentId || new Date(appt.datetime).toDateString() !== dayStr) return;
+
+            const apptDuration = appt.services.reduce((sum, s) => sum + (s.duration || 30), 0);
+            const slotsToBook = Math.ceil(apptDuration / 30);
+            const startTime = `${String(appt.datetime.getHours()).padStart(2, '0')}:${String(appt.datetime.getMinutes()).padStart(2, '0')}`;
+            const startIndex = TIMES.indexOf(startTime);
+
+            if (startIndex > -1) {
+                for (let i = 0; i < slotsToBook; i++) {
+                    if (startIndex + i < TIMES.length) {
+                        unavailableSlots.add(TIMES[startIndex + i]);
+                    }
+                }
+            }
+        });
+
+        return (startTime: string): boolean => {
+            const slotsNeeded = Math.ceil((totalDuration || 30) / 30);
+            const startIndex = TIMES.indexOf(startTime);
+            if (startIndex === -1) return false;
+
+            for (let i = 0; i < slotsNeeded; i++) {
+                const timeToCheckIndex = startIndex + i;
+                if (timeToCheckIndex >= TIMES.length || unavailableSlots.has(TIMES[timeToCheckIndex])) {
+                    return false;
+                }
+            }
+            return true;
+        };
+    }, [selectedDay, blockedSlots, appointments, totalDuration, editingAppointmentId]);
+
+
     if (!isOpen) return null;
 
     const today = new Date();
@@ -191,20 +250,8 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
                                 >
                                     <option value="">--:--</option>
                                     {TIMES.map(time => {
-                                        const isBlocked = selectedDay && blockedSlots.some(s => {
-                                            if (new Date(s.date).toDateString() !== selectedDay.toDateString()) return false;
-                                            if (s.isFullDay) return true;
-                                            if (!s.startTime) return false;
-                                            if (s.endTime) return time >= s.startTime && time < s.endTime;
-                                            return time === s.startTime;
-                                        });
-
-                                        const isScheduled = selectedDay && appointments.some(appt => 
-                                            new Date(appt.datetime).toDateString() === selectedDay.toDateString() &&
-                                            `${String(new Date(appt.datetime).getHours()).padStart(2, '0')}:${String(new Date(appt.datetime).getMinutes()).padStart(2, '0')}` === time
-                                        );
-
-                                        return <option key={time} value={time} disabled={isBlocked || isScheduled}>{time}</option>;
+                                        const isAvailable = timeIsAvailable(time);
+                                        return <option key={time} value={time} disabled={!isAvailable}>{time}</option>;
                                     })}
                                 </select>
                             </div>
@@ -219,19 +266,8 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
                                 >
                                     <option value="">--:--</option>
                                     {filteredEndTimes.map(time => {
-                                        const isBlocked = selectedDay && blockedSlots.some(s => {
-                                            if (new Date(s.date).toDateString() !== selectedDay.toDateString()) return false;
-                                            if (s.isFullDay) return true;
-                                            if (!s.startTime) return false;
-                                            if (s.endTime) return time >= s.startTime && time < s.endTime;
-                                            return time === s.startTime;
-                                        });
-
-                                        const isScheduled = selectedDay && appointments.some(appt => 
-                                            new Date(appt.datetime).toDateString() === selectedDay.toDateString() &&
-                                            `${String(new Date(appt.datetime).getHours()).padStart(2, '0')}:${String(new Date(appt.datetime).getMinutes()).padStart(2, '0')}` === time
-                                        );
-                                        return <option key={time} value={time} disabled={isBlocked || isScheduled}>{time}</option>;
+                                        const isAvailable = timeIsAvailable(time);
+                                        return <option key={time} value={time} disabled={!isAvailable}>{time}</option>;
                                     })}
                                 </select>
                             </div>
@@ -248,35 +284,15 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
                                 const isPast = isTodaySelected && (hour < today.getHours() || (hour === today.getHours() && minute < today.getMinutes()));
                                 const isSelected = time === selectedTime;
 
-                                const isBlocked = selectedDay && blockedSlots.some(s => {
-                                    if (new Date(s.date).toDateString() !== selectedDay.toDateString()) return false;
-                                    if (s.isFullDay) return true;
-                                    if (!s.startTime) return false;
-                                    
-                                    if (s.endTime) {
-                                        return time >= s.startTime && time < s.endTime;
-                                    }
-                                    return time === s.startTime;
-                                });
-
-                                const isScheduled = selectedDay && appointments.some(appt => 
-                                    appt.id !== editingAppointmentId &&
-                                    new Date(appt.datetime).toDateString() === selectedDay.toDateString() &&
-                                    `${String(new Date(appt.datetime).getHours()).padStart(2, '0')}:${String(new Date(appt.datetime).getMinutes()).padStart(2, '0')}` === time
-                                );
-
-                                const isDisabled = isPast || isBlocked || isScheduled;
+                                const isAvailable = timeIsAvailable(time);
+                                const isDisabled = isPast || !isAvailable;
                                 
                                 const baseClasses = "p-2 rounded-lg text-center transition-colors";
                                 let timeClasses = `${baseClasses} `;
 
                                 if (isSelected) {
                                     timeClasses += 'bg-pink-500 text-white font-bold';
-                                } else if (isBlocked) {
-                                    timeClasses += 'bg-rose-200 text-gray-500 line-through cursor-not-allowed';
-                                } else if (isScheduled) {
-                                    timeClasses += 'bg-amber-200 text-gray-500 cursor-not-allowed';
-                                } else if (isPast) {
+                                } else if (isDisabled) {
                                     timeClasses += 'bg-gray-200 text-gray-400 cursor-not-allowed';
                                 } else {
                                     timeClasses += 'bg-pink-100 cursor-pointer hover:bg-pink-200';
