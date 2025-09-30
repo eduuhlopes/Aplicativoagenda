@@ -58,7 +58,7 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
 
             const isPast = fullDate < today;
             const isSelected = selectedDay?.toDateString() === fullDate.toDateString();
-            const isBlocked = blockedSlots.some(slot => slot.isFullDay && slot.date.toDateString() === fullDate.toDateString());
+            const isBlocked = blockedSlots.some(slot => slot.isFullDay && new Date(slot.date).toDateString() === fullDate.toDateString());
             
             const baseClasses = "w-10 h-10 flex items-center justify-center rounded-full transition-colors";
             let dayClasses = isPast || isBlocked ? `${baseClasses} text-gray-400 cursor-not-allowed` : `${baseClasses} cursor-pointer hover:bg-pink-200`;
@@ -213,13 +213,22 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
                                 const [hour] = time.split(':').map(Number);
                                 const isPast = isTodaySelected && hour < today.getHours();
                                 const isSelected = time === selectedTime;
-                                const isBlockedTime = selectedDay && blockedSlots.some(
-                                    s => !s.isFullDay && s.date.toDateString() === selectedDay.toDateString() && s.startTime === time && !s.endTime
-                                );
+
+                                const isBlocked = selectedDay && blockedSlots.some(s => {
+                                    if (new Date(s.date).toDateString() !== selectedDay.toDateString()) return false;
+                                    if (s.isFullDay) return true;
+                                    if (!s.startTime) return false;
+                                    
+                                    if (s.endTime) {
+                                        return time >= s.startTime && time < s.endTime;
+                                    }
+                                    return time === s.startTime;
+                                });
                                 
                                 const baseClasses = "p-2 rounded-lg text-center transition-colors";
-                                let timeClasses = isPast || isBlockedTime ? `${baseClasses} bg-gray-200 text-gray-400 cursor-not-allowed` : `${baseClasses} bg-pink-100 cursor-pointer hover:bg-pink-200`;
-                                if (isBlockedTime) {
+                                let timeClasses = isPast || isBlocked ? `${baseClasses} bg-gray-200 text-gray-400 cursor-not-allowed` : `${baseClasses} bg-pink-100 cursor-pointer hover:bg-pink-200`;
+                                
+                                if (isBlocked) {
                                     timeClasses += ' line-through';
                                 }
                                 if (isSelected) {
@@ -227,7 +236,7 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
                                 }
 
                                 return (
-                                    <div key={time} className={timeClasses} onClick={() => !(isPast || isBlockedTime) && setSelectedTime(time)}>
+                                    <div key={time} className={timeClasses} onClick={() => !(isPast || isBlocked) && setSelectedTime(time)}>
                                         {time}
                                     </div>
                                 );

@@ -58,13 +58,13 @@ const AppointmentItem: React.FC<AppointmentItemProps> = ({ appointment, onCancel
                  {isToday && isFuture && (
                     <>
                         {appointment.reminderSent ? (
-                            <span className="px-4 py-2 text-sm text-gray-500 italic">Lembrete enviado ✔️</span>
+                             <div className="px-4 py-2 text-sm font-semibold text-gray-500 italic flex items-center bg-gray-100 rounded-lg">Lembrete Agendado ✔️</div>
                         ) : (
                             <button
                                 onClick={() => onSendReminder(appointment.id)}
                                 className="px-4 py-2 bg-green-500 text-white font-semibold rounded-lg shadow-sm hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors text-sm flex items-center"
                             >
-                                <WhatsAppIcon /> Lembrar
+                                <WhatsAppIcon /> Agendar Lembrete
                             </button>
                         )}
                     </>

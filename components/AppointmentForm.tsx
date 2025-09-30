@@ -4,9 +4,9 @@ import { SERVICES } from '../constants';
 import DateTimePickerModal from './DateTimePickerModal';
 
 interface AppointmentFormProps {
-    onSchedule: (appointment: Omit<Appointment, 'id' | 'status'>) => boolean;
+    onSchedule: (appointment: Omit<Appointment, 'id' | 'status'>) => Promise<boolean>;
     appointmentToEdit?: Appointment | null;
-    onUpdate?: (appointment: Appointment) => boolean;
+    onUpdate?: (appointment: Appointment) => Promise<boolean>;
     onCancelEdit?: () => void;
     blockedSlots: BlockedSlot[];
 }
@@ -86,7 +86,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
         setIsPickerOpen(false);
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!clientName || !clientPhone || !service || !value || !selectedDateTime) {
             alert("Por favor, preencha todos os detalhes do agendamento, incluindo o valor.");
@@ -95,7 +95,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
 
         let success = false;
         if (appointmentToEdit && onUpdate) {
-            success = onUpdate({
+            success = await onUpdate({
                 ...appointmentToEdit,
                 clientName,
                 clientPhone,
@@ -105,7 +105,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                 observations,
             });
         } else {
-            success = onSchedule({
+            success = await onSchedule({
                 clientName,
                 clientPhone,
                 service,
