@@ -18,6 +18,17 @@ const JWT_SECRET = 'seu-segredo-super-secreto-e-longo-para-jwt';
 const GOOGLE_CLIENT_ID = 'SEU_GOOGLE_CLIENT_ID_AQUI'; 
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
 
+// Helper para garantir que uma operação não exceda um tempo limite
+const withTimeout = (promise, ms) => {
+    const timeout = new Promise((_, reject) => {
+        const id = setTimeout(() => {
+            clearTimeout(id);
+            reject(new Error(`Operation timed out after ${ms} ms`));
+        }, ms);
+    });
+    return Promise.race([promise, timeout]);
+};
+
 
 // Middlewares
 app.use(cors()); // Permite requisições do seu frontend (que roda em outra porta)
@@ -54,20 +65,26 @@ app.post('/api/register', async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const passwordHash = await bcrypt.hash(password, salt);
 
-        const newUser = await db.query(
+        const dbQuery = db.query(
             "INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id, username",
             [username, passwordHash]
         );
+        
+        // Aplica um timeout de 7 segundos para garantir que a requisição não fique presa
+        const newUser = await withTimeout(dbQuery, 7000);
 
         res.status(201).json({
             message: 'Usuário criado com sucesso!',
             user: newUser.rows[0]
         });
     } catch (err) {
+        console.error('Erro no registro:', err.message);
+        if (err.message.includes('timed out')) {
+            return res.status(504).json({ message: 'O servidor não conseguiu se comunicar com o banco de dados a tempo. Tente novamente mais tarde.' });
+        }
         if (err.code === '23505') { // Erro de violação de chave única (username já existe)
             return res.status(409).json({ message: 'Este nome de usuário já está em uso.' });
         }
-        console.error('Erro no registro:', err);
         res.status(500).json({ message: 'Erro interno no servidor ao tentar registrar.' });
     }
 });
