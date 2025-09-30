@@ -9,6 +9,7 @@ export interface Appointment {
   value: number;
   status: AppointmentStatus;
   observations?: string;
+  reminderSent?: boolean;
 }
 
 export interface ModalInfo {
@@ -22,4 +23,12 @@ export interface Client {
   phone: string;
   totalSpent: number;
   daysSinceLastVisit: number | null;
+}
+
+export interface BlockedSlot {
+  id: number;
+  date: Date;
+  startTime?: string;
+  endTime?: string;
+  isFullDay: boolean;
 }

@@ -13,9 +13,13 @@ interface AppointmentListProps {
     appointments: Appointment[];
     onCancel: (id: number) => void;
     onComplete: (id: number) => void;
+    onEdit: (appointment: Appointment) => void;
+    onSendReminder: (id: number) => void;
+    highlightedAppointmentId: number | null;
+    removingAppointmentId: number | null;
 }
 
-const AppointmentList: React.FC<AppointmentListProps> = ({ appointments, onCancel, onComplete }) => {
+const AppointmentList: React.FC<AppointmentListProps> = ({ appointments, onCancel, onComplete, onEdit, onSendReminder, highlightedAppointmentId, removingAppointmentId }) => {
     return (
         <div className="flex flex-col h-full">
             <h2 className="text-2xl font-bold text-purple-800 text-center mb-4 flex items-center justify-center">
@@ -34,6 +38,10 @@ const AppointmentList: React.FC<AppointmentListProps> = ({ appointments, onCance
                             appointment={appt} 
                             onCancel={onCancel}
                             onComplete={onComplete}
+                            onEdit={onEdit}
+                            onSendReminder={onSendReminder}
+                            isHighlighted={appt.id === highlightedAppointmentId}
+                            isRemoving={appt.id === removingAppointmentId}
                         />
                     ))
                 )}

@@ -1,11 +1,16 @@
-import React, { useState } from 'react';
-import { Appointment } from '../types';
+import React, { useState, useEffect } from 'react';
+import { Appointment, BlockedSlot } from '../types';
 import { SERVICES } from '../constants';
 import DateTimePickerModal from './DateTimePickerModal';
 
 interface AppointmentFormProps {
-    onSchedule: (appointment: Omit<Appointment, 'id' | 'status'>) => void;
+    onSchedule: (appointment: Omit<Appointment, 'id' | 'status'>) => boolean;
+    appointmentToEdit?: Appointment | null;
+    onUpdate?: (appointment: Appointment) => boolean;
+    onCancelEdit?: () => void;
+    blockedSlots: BlockedSlot[];
 }
+
 
 const CustomSelect: React.FC<{
     id: string;
@@ -29,7 +34,7 @@ const CustomSelect: React.FC<{
     </div>
 );
 
-const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule }) => {
+const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointmentToEdit, onUpdate, onCancelEdit, blockedSlots }) => {
     const [clientName, setClientName] = useState('');
     const [clientPhone, setClientPhone] = useState('');
     const [service, setService] = useState('');
@@ -38,6 +43,19 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule }) => {
     const [isPickerOpen, setIsPickerOpen] = useState(false);
     const [observations, setObservations] = useState('');
     
+    useEffect(() => {
+        if (appointmentToEdit) {
+            setClientName(appointmentToEdit.clientName);
+            setClientPhone(appointmentToEdit.clientPhone);
+            setService(appointmentToEdit.service);
+            setValue(String(appointmentToEdit.value));
+            setSelectedDateTime(appointmentToEdit.datetime);
+            setObservations(appointmentToEdit.observations || '');
+        } else {
+            resetForm();
+        }
+    }, [appointmentToEdit]);
+
     const resetForm = () => {
         setClientName('');
         setClientPhone('');
@@ -63,8 +81,8 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule }) => {
         setClientPhone(value);
     };
 
-    const handleDateTimeConfirm = (date: Date) => {
-        setSelectedDateTime(date);
+    const handleDateTimeConfirm = (data: { date: Date }) => {
+        setSelectedDateTime(data.date);
         setIsPickerOpen(false);
     };
 
@@ -75,21 +93,37 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule }) => {
             return;
         }
 
-        onSchedule({
-            clientName,
-            clientPhone,
-            service,
-            datetime: selectedDateTime,
-            value: parseFloat(value),
-            observations,
-        });
-        resetForm();
+        let success = false;
+        if (appointmentToEdit && onUpdate) {
+            success = onUpdate({
+                ...appointmentToEdit,
+                clientName,
+                clientPhone,
+                service,
+                datetime: selectedDateTime,
+                value: parseFloat(value),
+                observations,
+            });
+        } else {
+            success = onSchedule({
+                clientName,
+                clientPhone,
+                service,
+                datetime: selectedDateTime,
+                value: parseFloat(value),
+                observations,
+            });
+        }
+        
+        if (success) {
+            resetForm();
+        }
     };
 
     return (
         <>
             <form onSubmit={handleSubmit} className="space-y-6">
-                <h2 className="text-2xl font-bold text-purple-800 text-center mb-4">Agendar um Horário</h2>
+                <h2 className="text-2xl font-bold text-purple-800 text-center mb-4">{appointmentToEdit ? 'Editar Agendamento' : 'Agendar um Horário'}</h2>
                 
                 <div>
                     <label htmlFor="client-name" className="block text-md font-medium text-purple-800 mb-1">
@@ -176,15 +210,25 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule }) => {
                     </button>
                 </div>
 
-                <button type="submit" className="w-full py-3 px-4 bg-pink-500 text-white font-bold text-lg rounded-lg shadow-md hover:bg-pink-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500 transition-transform transform hover:scale-105">
-                    Agendar Horário
-                </button>
+                <div className="flex flex-col sm:flex-row gap-3">
+                    {appointmentToEdit && (
+                        <button type="button" onClick={onCancelEdit} className="w-full py-3 px-4 bg-gray-400 text-white font-bold text-lg rounded-lg shadow-md hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 transition-transform transform hover:scale-105">
+                            Cancelar
+                        </button>
+                    )}
+                    <button type="submit" className="w-full py-3 px-4 bg-pink-500 text-white font-bold text-lg rounded-lg shadow-md hover:bg-pink-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500 transition-transform transform hover:scale-105">
+                        {appointmentToEdit ? 'Salvar Alterações' : 'Agendar Horário'}
+                    </button>
+                </div>
+
+
             </form>
             <DateTimePickerModal
                 isOpen={isPickerOpen}
                 onClose={() => setIsPickerOpen(false)}
                 onConfirm={handleDateTimeConfirm}
                 initialDate={selectedDateTime}
+                blockedSlots={blockedSlots}
             />
         </>
     );
