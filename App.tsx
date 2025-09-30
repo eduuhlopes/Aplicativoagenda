@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { Appointment, ModalInfo, Client, BlockedSlot, User } from './types';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { Appointment, ModalInfo, Client, BlockedSlot } from './types';
 import Header from './components/Header';
 import AppointmentForm from './components/AppointmentForm';
 import AppointmentList from './components/AppointmentList';
@@ -7,13 +7,16 @@ import Modal from './components/Modal';
 import RevenueDashboard from './components/RevenueDashboard';
 import ClientList from './components/ClientList';
 import DateTimePickerModal from './components/DateTimePickerModal';
-import LoginScreen from './components/LoginScreen';
-
-const API_BASE_URL = '/api';
 
 const AgendaManagementIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 inline-block ml-2 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2zM7 16h.01M12 16h.01M17 16h.01" />
+    </svg>
+);
+
+const BackupIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 inline-block ml-2 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
     </svg>
 );
 
@@ -80,24 +83,96 @@ const AgendaManagement: React.FC<{
     );
 };
 
+const BackupManagement: React.FC<{
+    onExport: () => void;
+    onImport: (event: React.ChangeEvent<HTMLInputElement>) => void;
+}> = ({ onExport, onImport }) => {
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    return (
+         <div className="border-t-2 border-pink-200 pt-8 mt-8">
+            <h2 className="text-2xl font-bold text-purple-800 text-center mb-4 flex items-center justify-center">
+                Backup e Restauração
+                <BackupIcon />
+            </h2>
+            <div className="flex flex-col sm:flex-row gap-4">
+                <button
+                    onClick={onExport}
+                    className="flex-1 py-3 px-4 bg-blue-500 text-white font-bold text-lg rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-transform transform hover:scale-105"
+                >
+                    Exportar Dados
+                </button>
+                <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex-1 py-3 px-4 bg-green-500 text-white font-bold text-lg rounded-lg shadow-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-transform transform hover:scale-105"
+                >
+                    Importar Dados
+                </button>
+                <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={onImport}
+                    className="hidden"
+                    accept=".json"
+                />
+            </div>
+            <p className="text-sm text-center text-pink-600 italic mt-4">
+                Salve seus dados em um arquivo seguro ou restaure de um backup anterior.
+            </p>
+        </div>
+    )
+};
+
 
 const App: React.FC = () => {
-    const [user, setUser] = useState<User | null>(null);
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [blockedSlots, setBlockedSlots] = useState<BlockedSlot[]>([]);
-    
     const [modalInfo, setModalInfo] = useState<ModalInfo>({
         isOpen: false,
         title: '',
         message: '',
     });
-
     const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
     const [activeView, setActiveView] = useState<'appointments' | 'clients'>('appointments');
     const [notificationAppointments, setNotificationAppointments] = useState<Appointment[]>([]);
     const [isNotificationPopoverOpen, setIsNotificationPopoverOpen] = useState(false);
     const [highlightedAppointmentId, setHighlightedAppointmentId] = useState<number | null>(null);
     const [removingAppointmentId, setRemovingAppointmentId] = useState<number | null>(null);
+
+    // Load data from localStorage on initial render
+    useEffect(() => {
+        try {
+            const savedAppointments = localStorage.getItem('appointments');
+            if (savedAppointments) {
+                setAppointments(JSON.parse(savedAppointments).map((a: any) => ({ ...a, datetime: new Date(a.datetime) })));
+            }
+            const savedBlockedSlots = localStorage.getItem('blockedSlots');
+            if (savedBlockedSlots) {
+                setBlockedSlots(JSON.parse(savedBlockedSlots).map((s: any) => ({ ...s, date: new Date(s.date) })));
+            }
+        } catch (error) {
+            console.error("Failed to load data from localStorage", error);
+            showModal("Erro", "Não foi possível carregar os dados salvos.");
+        }
+    }, []);
+
+    // Save data to localStorage whenever it changes
+    useEffect(() => {
+        try {
+            localStorage.setItem('appointments', JSON.stringify(appointments));
+        } catch (error) {
+            console.error("Failed to save appointments to localStorage", error);
+        }
+    }, [appointments]);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('blockedSlots', JSON.stringify(blockedSlots));
+        } catch (error) {
+            console.error("Failed to save blocked slots to localStorage", error);
+        }
+    }, [blockedSlots]);
+
 
     const showModal = (title: string, message: string) => {
         setModalInfo({ isOpen: true, title, message });
@@ -106,77 +181,6 @@ const App: React.FC = () => {
     const closeModal = () => {
         setModalInfo({ isOpen: false, title: '', message: '' });
     };
-
-    const handleLogout = useCallback(() => {
-        localStorage.removeItem('userToken');
-        setUser(null);
-        setAppointments([]);
-        setBlockedSlots([]);
-    }, []);
-
-    const getAuthHeaders = useCallback(() => {
-        const token = localStorage.getItem('userToken');
-        if (!token) {
-            handleLogout();
-            return null;
-        }
-        return {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-        };
-    }, [handleLogout]);
-
-    useEffect(() => {
-        const token = localStorage.getItem('userToken');
-        if (token) {
-            try {
-                const payload = JSON.parse(atob(token.split('.')[1]));
-                if (payload.exp * 1000 > Date.now()) {
-                    setUser({ username: payload.username, id: payload.userId });
-                } else {
-                    handleLogout();
-                }
-            } catch (error) {
-                console.error("Failed to parse token", error);
-                handleLogout();
-            }
-        }
-    }, [handleLogout]);
-
-    useEffect(() => {
-        if (!user) return;
-
-        const fetchData = async () => {
-            const headers = getAuthHeaders();
-            if (!headers) return;
-
-            try {
-                const [appointmentsRes, blockedSlotsRes] = await Promise.all([
-                    fetch(`${API_BASE_URL}/appointments`, { headers }),
-                    fetch(`${API_BASE_URL}/blocked-slots`, { headers }),
-                ]);
-
-                if (!appointmentsRes.ok || !blockedSlotsRes.ok) {
-                    if (appointmentsRes.status === 401 || blockedSlotsRes.status === 401) {
-                        handleLogout();
-                    }
-                    throw new Error('Failed to fetch data from server.');
-                }
-
-                const appointmentsData = await appointmentsRes.json();
-                const blockedSlotsData = await blockedSlotsRes.json();
-                
-                setAppointments(appointmentsData.map((appt: any) => ({ ...appt, datetime: new Date(appt.datetime) })));
-                setBlockedSlots(blockedSlotsData.map((slot: any) => ({ ...slot, date: new Date(slot.date) })));
-
-            } catch (error) {
-                console.error("Error fetching data:", error);
-                showModal("Erro de Conexão", "Não foi possível carregar os dados. Verifique se o servidor backend está rodando e tente novamente.");
-            }
-        };
-
-        fetchData();
-    }, [user, getAuthHeaders, handleLogout]);
 
      useEffect(() => {
         const now = new Date();
@@ -215,7 +219,6 @@ const App: React.FC = () => {
     
      const checkAppointmentConflict = useCallback((datetime: Date, appointmentIdToIgnore: number | null = null): string | null => {
         const now = new Date();
-        // Allow a small grace period for updates to appointments happening right now
         if (datetime < now && (!appointmentIdToIgnore || (now.getTime() - datetime.getTime()) > 60000)) {
             return "Não é possível agendar horários no passado.";
         }
@@ -225,21 +228,13 @@ const App: React.FC = () => {
 
         for (const slot of blockedSlots) {
             if (new Date(slot.date).toDateString() !== appointmentDateStr) continue;
-
-            if (slot.isFullDay) {
-                return "Este dia está totalmente bloqueado e não aceita novos agendamentos.";
-            }
-
-            if (slot.startTime) {
-                if (slot.endTime) { // Time range block (e.g., 10:00 to 12:00)
-                    if (appointmentTime >= slot.startTime && appointmentTime < slot.endTime) {
-                        return `Este horário está indisponível (bloqueado de ${slot.startTime} às ${slot.endTime}).`;
-                    }
-                } else { // Single time block
-                    if (appointmentTime === slot.startTime) {
-                        return `O horário das ${slot.startTime} está bloqueado.`;
-                    }
+            if (slot.isFullDay) return "Este dia está totalmente bloqueado.";
+            if (slot.endTime) {
+                if (appointmentTime >= slot.startTime! && appointmentTime < slot.endTime) {
+                    return `Este horário está indisponível (bloqueado de ${slot.startTime} às ${slot.endTime}).`;
                 }
+            } else if (appointmentTime === slot.startTime) {
+                return `O horário das ${slot.startTime} está bloqueado.`;
             }
         }
         
@@ -253,22 +248,16 @@ const App: React.FC = () => {
         return null;
     }, [blockedSlots, appointments]);
 
-    const handleBlockSlot = useCallback(async (data: { date: Date, isFullDay: boolean, startTime?: string, endTime?: string }) => {
-        const headers = getAuthHeaders();
-        if (!headers) return;
-        
+    const handleBlockSlot = useCallback((data: { date: Date, isFullDay: boolean, startTime?: string, endTime?: string }) => {
         const newSlotDateStr = data.date.toDateString();
         const conflict = blockedSlots.some(s => {
             if (new Date(s.date).toDateString() !== newSlotDateStr) return false;
-
             if (s.isFullDay || data.isFullDay) return true;
-
             if (data.startTime && s.startTime) {
                 const newStart = data.startTime;
                 const newEnd = data.endTime || newStart;
                 const existingStart = s.startTime;
                 const existingEnd = s.endTime || existingStart;
-                
                 return newStart <= existingEnd && newEnd >= existingStart;
             }
             return false;
@@ -279,110 +268,51 @@ const App: React.FC = () => {
             return;
         }
 
-        try {
-            const response = await fetch(`${API_BASE_URL}/blocked-slots`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(data),
-            });
-            const newSlot = await response.json();
-            if (!response.ok) throw new Error(newSlot.message || 'Falha ao bloquear horário.');
+        const newSlot: BlockedSlot = { ...data, id: Date.now() };
+        setBlockedSlots(prev => [...prev, newSlot].sort((a,b) => a.date.getTime() - b.date.getTime()));
+        showModal("Sucesso", "Horário bloqueado com sucesso.");
+    }, [blockedSlots]);
 
-            setBlockedSlots(prev => {
-                const updated = [...prev, { ...newSlot, date: new Date(newSlot.date) }];
-                updated.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || (a.startTime || "").localeCompare(b.startTime || ""));
-                return updated;
-            });
-            showModal("Sucesso", "Horário bloqueado com sucesso.");
-        } catch (error) {
-            console.error(error);
-            showModal("Erro", error instanceof Error ? error.message : "Não foi possível bloquear o horário.");
-        }
-    }, [blockedSlots, getAuthHeaders]);
-
-    const handleUnblockSlot = useCallback(async (id: number) => {
-        const headers = getAuthHeaders();
-        if (!headers) return;
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/blocked-slots/${id}`, {
-                method: 'DELETE',
-                headers,
-            });
-            if (!response.ok) throw new Error('Falha ao desbloquear horário.');
-
-            const slotToUnblock = blockedSlots.find(s => s.id === id);
-            setBlockedSlots(prev => prev.filter(s => s.id !== id));
-            showModal("Sucesso", `O bloqueio para ${slotToUnblock ? new Date(slotToUnblock.date).toLocaleDateString('pt-BR') : ''} foi removido.`);
-        } catch (error) {
-            console.error(error);
-            showModal("Erro", error instanceof Error ? error.message : "Não foi possível desbloquear o horário.");
-        }
-    }, [blockedSlots, getAuthHeaders]);
-
+    const handleUnblockSlot = useCallback((id: number) => {
+        const slotToUnblock = blockedSlots.find(s => s.id === id);
+        setBlockedSlots(prev => prev.filter(s => s.id !== id));
+        showModal("Sucesso", `O bloqueio para ${slotToUnblock ? new Date(slotToUnblock.date).toLocaleDateString('pt-BR') : ''} foi removido.`);
+    }, [blockedSlots]);
 
     const handleScheduleAppointment = useCallback(async (newAppointmentData: Omit<Appointment, 'id' | 'status'>): Promise<boolean> => {
-        const headers = getAuthHeaders();
-        if (!headers) return false;
-
         const conflictMessage = checkAppointmentConflict(newAppointmentData.datetime);
         if (conflictMessage) {
             showModal("Horário Indisponível", conflictMessage);
             return false;
         }
+        
+        const newAppointment: Appointment = {
+            ...newAppointmentData,
+            id: Date.now(),
+            status: 'scheduled'
+        };
 
-        try {
-            const response = await fetch(`${API_BASE_URL}/appointments`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(newAppointmentData),
-            });
-            const newAppointment = await response.json();
-            if (!response.ok) throw new Error(newAppointment.message || 'Falha ao agendar.');
-
-            setAppointments(prev => {
-                const updated = [...prev, { ...newAppointment, datetime: new Date(newAppointment.datetime) }];
-                updated.sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime());
-                return updated;
-            });
-            
-            setHighlightedAppointmentId(newAppointment.id);
-            showModal("Sucesso", `Agendamento para ${newAppointment.clientName} marcado com sucesso.`);
-            
-            const sanitizedClientPhone = newAppointment.clientPhone.replace(/\D/g, '');
-            const clientMessage = `Olá, ${newAppointment.clientName}! ✨\n\nSeu agendamento no salão foi confirmado com sucesso!\n\n*Serviço:* ${newAppointment.service}\n*Valor:* R$ ${newAppointment.value.toFixed(2)}\n*Data:* ${new Date(newAppointment.datetime).toLocaleDateString('pt-BR')}\n*Hora:* ${new Date(newAppointment.datetime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}\n\nMal podemos esperar para te ver! 🌸`;
-            window.open(`https://wa.me/55${sanitizedClientPhone}?text=${encodeURIComponent(clientMessage)}`, '_blank');
-            return true;
-
-        } catch (error) {
-            console.error(error);
-            showModal("Erro", error instanceof Error ? error.message : "Não foi possível agendar.");
-            return false;
-        }
-    }, [getAuthHeaders, checkAppointmentConflict, appointments]);
+        setAppointments(prev => [...prev, newAppointment].sort((a, b) => a.datetime.getTime() - b.datetime.getTime()));
+        setHighlightedAppointmentId(newAppointment.id);
+        showModal("Sucesso", `Agendamento para ${newAppointment.clientName} marcado com sucesso.`);
+        
+        const sanitizedClientPhone = newAppointment.clientPhone.replace(/\D/g, '');
+        const clientMessage = `Olá, ${newAppointment.clientName}! ✨\n\nSeu agendamento no salão foi confirmado com sucesso!\n\n*Serviço:* ${newAppointment.service}\n*Valor:* R$ ${newAppointment.value.toFixed(2)}\n*Data:* ${new Date(newAppointment.datetime).toLocaleDateString('pt-BR')}\n*Hora:* ${new Date(newAppointment.datetime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}\n\nMal podemos esperar para te ver! 🌸`;
+        window.open(`https://wa.me/55${sanitizedClientPhone}?text=${encodeURIComponent(clientMessage)}`, '_blank');
+        return true;
+    }, [checkAppointmentConflict]);
 
     const handleCancelAppointment = useCallback(async (appointmentId: number) => {
-        const headers = getAuthHeaders();
-        if (!headers) return;
-
         const appointmentToCancel = appointments.find(appt => appt.id === appointmentId);
         if (appointmentToCancel) {
-             try {
-                const response = await fetch(`${API_BASE_URL}/appointments/${appointmentId}`, { method: 'DELETE', headers });
-                if (!response.ok) throw new Error('Falha ao cancelar no servidor.');
-
-                setRemovingAppointmentId(appointmentId);
-                setTimeout(() => {
-                    setAppointments(prev => prev.filter(appt => appt.id !== appointmentId));
-                    setRemovingAppointmentId(null);
-                    showModal("Cancelado", `O agendamento de ${appointmentToCancel.clientName} foi cancelado.`);
-                }, 500);
-            } catch (error) {
-                console.error(error);
-                showModal("Erro", "Não foi possível cancelar o agendamento.");
-            }
+            setRemovingAppointmentId(appointmentId);
+            setTimeout(() => {
+                setAppointments(prev => prev.filter(appt => appt.id !== appointmentId));
+                setRemovingAppointmentId(null);
+                showModal("Cancelado", `O agendamento de ${appointmentToCancel.clientName} foi cancelado.`);
+            }, 500);
         }
-    }, [appointments, getAuthHeaders]);
+    }, [appointments]);
 
     const handleStartEdit = useCallback((appointment: Appointment) => {
         setEditingAppointment(appointment);
@@ -394,94 +324,88 @@ const App: React.FC = () => {
     }, []);
 
     const handleUpdateAppointment = useCallback(async (updatedAppointment: Appointment): Promise<boolean> => {
-        const headers = getAuthHeaders();
-        if (!headers) return false;
-
         const conflictMessage = checkAppointmentConflict(updatedAppointment.datetime, updatedAppointment.id);
         if (conflictMessage) {
             showModal("Horário Indisponível", conflictMessage);
             return false;
         }
+        setAppointments(prev => prev.map(appt => appt.id === updatedAppointment.id ? updatedAppointment : appt).sort((a, b) => a.datetime.getTime() - b.datetime.getTime()));
+        setEditingAppointment(null);
+        setHighlightedAppointmentId(updatedAppointment.id);
+        showModal("Sucesso", "Agendamento atualizado com sucesso!");
+        return true;
+    }, [checkAppointmentConflict, appointments]);
 
-        try {
-            const response = await fetch(`${API_BASE_URL}/appointments/${updatedAppointment.id}`, {
-                method: 'PUT',
-                headers,
-                body: JSON.stringify(updatedAppointment),
-            });
-            const returnedAppointment = await response.json();
-            if (!response.ok) throw new Error(returnedAppointment.message || 'Falha ao atualizar.');
-
-            setAppointments(prev => {
-                const updatedList = prev.map(appt =>
-                    appt.id === returnedAppointment.id ? { ...returnedAppointment, datetime: new Date(returnedAppointment.datetime) } : appt
-                );
-                updatedList.sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime());
-                return updatedList;
-            });
-            setEditingAppointment(null);
-            setHighlightedAppointmentId(returnedAppointment.id);
-            showModal("Sucesso", "Agendamento atualizado com sucesso!");
-            return true;
-        } catch (error) {
-            console.error(error);
-            showModal("Erro", error instanceof Error ? error.message : "Não foi possível atualizar.");
-            return false;
-        }
-    }, [getAuthHeaders, checkAppointmentConflict, appointments]);
-
-    const handleUpdateAppointmentStatus = useCallback(async (appointmentId: number, update: Partial<Appointment>) => {
-        const headers = getAuthHeaders();
-        if (!headers) return;
-        
-        const originalAppointment = appointments.find(a => a.id === appointmentId);
-        if (!originalAppointment) return;
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/appointments/${appointmentId}`, {
-                method: 'PUT',
-                headers,
-                body: JSON.stringify(update),
-            });
-            const returnedAppointment = await response.json();
-            if (!response.ok) throw new Error(returnedAppointment.message || 'Falha ao atualizar status.');
-            
-            setAppointments(prev => prev.map(appt => appt.id === appointmentId ? { ...appt, ...update } : appt));
-            return returnedAppointment;
-        } catch (error) {
-            console.error(error);
-            showModal("Erro", error instanceof Error ? error.message : "Não foi possível atualizar o status.");
-            return null;
-        }
-    }, [appointments, getAuthHeaders]);
-
+    const handleUpdateAppointmentStatus = useCallback((appointmentId: number, status: 'completed' | 'scheduled') => {
+        setAppointments(prev =>
+            prev.map(appt =>
+                appt.id === appointmentId ? { ...appt, status } : appt
+            )
+        );
+    }, []);
 
     const handleCompleteAppointment = useCallback(async (appointmentId: number) => {
         const completedAppt = appointments.find(a => a.id === appointmentId);
         if (completedAppt) {
             setRemovingAppointmentId(appointmentId);
-            const updated = await handleUpdateAppointmentStatus(appointmentId, { status: 'completed' });
-            if (updated) {
-                 setTimeout(() => {
-                    setRemovingAppointmentId(null);
-                    showModal("Finalizado", `O agendamento de ${completedAppt.clientName} foi marcado como finalizado.`);
-                }, 500);
-            } else {
-                setRemovingAppointmentId(null); // Clear animation on failure
-            }
+            handleUpdateAppointmentStatus(appointmentId, 'completed');
+            setTimeout(() => {
+                setRemovingAppointmentId(null);
+                showModal("Finalizado", `O agendamento de ${completedAppt.clientName} foi marcado como finalizado.`);
+            }, 500);
         }
     }, [appointments, handleUpdateAppointmentStatus]);
 
-    const handleSendReminder = useCallback(async (appointmentId: number) => {
-        const updated = await handleUpdateAppointmentStatus(appointmentId, { reminderSent: true });
-        if (updated) {
-            showModal("Lembrete Agendado", "O lembrete foi agendado para ser enviado automaticamente para a cliente.");
-        }
-    }, [handleUpdateAppointmentStatus]);
-
-    const handleLogin = useCallback((loggedInUser: User) => {
-        setUser(loggedInUser);
+    const handleSendReminder = useCallback((appointmentId: number) => {
+        setAppointments(prev => prev.map(appt =>
+            appt.id === appointmentId ? { ...appt, reminderSent: true } : appt
+        ));
+        showModal("Lembrete Agendado", "O lembrete foi marcado como agendado para envio.");
     }, []);
+    
+    const handleExportData = () => {
+        try {
+            const dataStr = JSON.stringify({ appointments, blockedSlots }, null, 2);
+            const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+            const exportFileDefaultName = `backup_agenda_${new Date().toISOString().slice(0, 10)}.json`;
+            const linkElement = document.createElement('a');
+            linkElement.setAttribute('href', dataUri);
+            linkElement.setAttribute('download', exportFileDefaultName);
+            linkElement.click();
+            showModal("Exportado", "Seus dados foram exportados com sucesso!");
+        } catch (error) {
+            showModal("Erro", "Não foi possível exportar os dados.");
+            console.error(error);
+        }
+    };
+    
+    const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const text = e.target?.result;
+                if (typeof text !== 'string') throw new Error("File content is not readable text.");
+                const data = JSON.parse(text);
+
+                if (data.appointments && Array.isArray(data.appointments) && data.blockedSlots && Array.isArray(data.blockedSlots)) {
+                    setAppointments(data.appointments.map((a: any) => ({ ...a, datetime: new Date(a.datetime) })));
+                    setBlockedSlots(data.blockedSlots.map((s: any) => ({ ...s, date: new Date(s.date) })));
+                    showModal("Importado", "Dados restaurados com sucesso a partir do backup!");
+                } else {
+                    throw new Error("Arquivo de backup inválido ou mal formatado.");
+                }
+            } catch (error) {
+                showModal("Erro de Importação", error instanceof Error ? error.message : "Não foi possível ler o arquivo de backup.");
+                console.error(error);
+            } finally {
+                event.target.value = ''; // Reset file input
+            }
+        };
+        reader.readAsText(file);
+    };
 
     const upcomingAppointments = useMemo(() => {
         return appointments.filter(appt => appt.status === 'scheduled');
@@ -557,16 +481,10 @@ const App: React.FC = () => {
     const sparkleSvg = `<svg width="20" height="20" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 0 L55.9 44.1 L100 50 L55.9 55.9 L50 100 L44.1 55.9 L0 50 L44.1 44.1 Z" fill="rgba(236, 72, 153, 0.08)" /></svg>`;
     const bgStyle = { backgroundImage: `url('data:image/svg+xml;base64,${btoa(sparkleSvg)}')` };
 
-    if (!user) {
-        return <LoginScreen onLogin={handleLogin} />;
-    }
-
     return (
         <div className="min-h-screen bg-pink-50 text-pink-900 font-sans p-4 sm:p-6 md:p-8" style={bgStyle}>
             <div className="max-w-7xl mx-auto relative">
                 <Header 
-                    user={user}
-                    onLogout={handleLogout}
                     notificationAppointments={notificationAppointments}
                     isNotificationPopoverOpen={isNotificationPopoverOpen}
                     onToggleNotificationPopover={handleToggleNotificationPopover}
@@ -610,11 +528,10 @@ const App: React.FC = () => {
                                     onBlockSlot={handleBlockSlot}
                                     onUnblockSlot={handleUnblockSlot}
                                 />
-                                <div className="border-t-2 border-pink-200 pt-8 mt-8 text-center">
-                                    <p className="text-sm text-pink-600 italic">
-                                        Os dados agora são salvos automaticamente no servidor.
-                                    </p>
-                                </div>
+                                <BackupManagement 
+                                    onExport={handleExportData}
+                                    onImport={handleImportData}
+                                />
                             </div>
                         </div>
                     )}

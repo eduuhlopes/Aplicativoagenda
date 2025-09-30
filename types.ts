@@ -32,8 +32,3 @@ export interface BlockedSlot {
   endTime?: string;
   isFullDay: boolean;
 }
-
-export interface User {
-  id?: number;
-  username: string;
-}
