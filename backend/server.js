@@ -10,13 +10,13 @@ const app = express();
 const PORT = 3001;
 
 // ATENÇÃO: Mude este segredo para algo único e seguro!
-// O ideal é usar uma variável de ambiente (process.env.JWT_SECRET)
 const JWT_SECRET = 'seu-segredo-super-secreto-e-longo-para-jwt';
 
 // ATENÇÃO: Adicione o ID do Cliente do seu projeto Google Cloud Console aqui
-// O ideal é usar uma variável de ambiente (process.env.GOOGLE_CLIENT_ID)
 const GOOGLE_CLIENT_ID = 'SEU_GOOGLE_CLIENT_ID_AQUI'; 
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
+
+const TIMEOUT_MS = 7000;
 
 // Helper para garantir que uma operação não exceda um tempo limite
 const withTimeout = (promise, ms) => {
@@ -29,15 +29,26 @@ const withTimeout = (promise, ms) => {
     return Promise.race([promise, timeout]);
 };
 
+// Handler de erro genérico para as rotas
+const handleRouteError = (err, res, context) => {
+    console.error(`Erro em '${context}':`, err.message);
+    if (err.message.includes('timed out')) {
+        return res.status(504).json({ message: 'O servidor não conseguiu se comunicar com o banco de dados a tempo. Tente novamente.' });
+    }
+    if (err.code === '23505') { // Violação de unicidade
+        return res.status(409).json({ message: `Erro de conflito: ${context} já existe.` });
+    }
+    res.status(500).json({ message: `Erro interno no servidor em '${context}'.` });
+};
 
 // Middlewares
-app.use(cors()); // Permite requisições do seu frontend (que roda em outra porta)
-app.use(express.json()); // Permite que o servidor entenda JSON
+app.use(cors());
+app.use(express.json());
 
 // Middleware de Autenticação
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    const token = authHeader && authHeader.split(' ')[1];
 
     if (token == null) {
         return res.status(401).json({ message: 'Token de autenticação não fornecido.' });
@@ -47,7 +58,7 @@ const authenticateToken = (req, res, next) => {
         if (err) {
             return res.status(403).json({ message: 'Token inválido ou expirado.' });
         }
-        req.user = user; // Adiciona os dados do usuário (ex: { userId: 1, username: 'ana' }) ao request
+        req.user = user;
         next();
     });
 };
@@ -70,22 +81,17 @@ app.post('/api/register', async (req, res) => {
             [username, passwordHash]
         );
         
-        // Aplica um timeout de 7 segundos para garantir que a requisição não fique presa
-        const newUser = await withTimeout(dbQuery, 7000);
+        const newUser = await withTimeout(dbQuery, TIMEOUT_MS);
 
         res.status(201).json({
             message: 'Usuário criado com sucesso!',
             user: newUser.rows[0]
         });
     } catch (err) {
-        console.error('Erro no registro:', err.message);
-        if (err.message.includes('timed out')) {
-            return res.status(504).json({ message: 'O servidor não conseguiu se comunicar com o banco de dados a tempo. Tente novamente mais tarde.' });
-        }
-        if (err.code === '23505') { // Erro de violação de chave única (username já existe)
+        if (err.code === '23505') {
             return res.status(409).json({ message: 'Este nome de usuário já está em uso.' });
         }
-        res.status(500).json({ message: 'Erro interno no servidor ao tentar registrar.' });
+        handleRouteError(err, res, 'registro');
     }
 });
 
@@ -97,7 +103,8 @@ app.post('/api/login', async (req, res) => {
     }
 
     try {
-        const result = await db.query("SELECT * FROM users WHERE username = $1", [username]);
+        const dbQuery = db.query("SELECT * FROM users WHERE username = $1", [username]);
+        const result = await withTimeout(dbQuery, TIMEOUT_MS);
         const user = result.rows[0];
 
         if (!user) {
@@ -112,7 +119,7 @@ app.post('/api/login', async (req, res) => {
         const token = jwt.sign(
             { userId: user.id, username: user.username },
             JWT_SECRET,
-            { expiresIn: '8h' } // Token expira em 8 horas
+            { expiresIn: '8h' }
         );
 
         res.json({
@@ -121,8 +128,7 @@ app.post('/api/login', async (req, res) => {
             user: { id: user.id, username: user.username }
         });
     } catch (err) {
-        console.error('Erro no login:', err);
-        res.status(500).json({ message: 'Erro interno no servidor ao tentar fazer login.' });
+        handleRouteError(err, res, 'login');
     }
 });
 
@@ -132,49 +138,35 @@ app.post('/api/auth/google', async (req, res) => {
     try {
         let payload;
 
-        // Bloco de verificação do token (simulado para desenvolvimento)
         if (token.startsWith('simulated-google-id-token')) {
-             // Lógica de simulação para desenvolvimento sem precisar do frontend real do Google
              console.warn('Usando token do Google SIMULADO.');
              const decodedPayload = JSON.parse(atob(token.split('.')[1]));
              payload = { email: decodedPayload.email, name: decodedPayload.name };
         } else {
-            // Lógica de produção: verificar o token com os servidores do Google
-            // Descomente esta parte quando tiver um GOOGLE_CLIENT_ID real
-            /*
-            const ticket = await client.verifyIdToken({
-                idToken: token,
-                audience: GOOGLE_CLIENT_ID,
-            });
-            payload = ticket.getPayload();
-            */
             return res.status(400).json({ message: "A verificação real do Google está desativada. Configure o GOOGLE_CLIENT_ID." });
         }
         
-        const { email, name } = payload;
+        const { email } = payload;
         if (!email) {
             return res.status(400).json({ message: 'Token do Google inválido: e-mail não encontrado.' });
         }
-
-        // Verifica se o usuário já existe pelo e-mail (que será o username)
-        let result = await db.query("SELECT * FROM users WHERE username = $1", [email]);
+        
+        const findUserQuery = db.query("SELECT * FROM users WHERE username = $1", [email]);
+        let result = await withTimeout(findUserQuery, TIMEOUT_MS);
         let user = result.rows[0];
 
         if (!user) {
-            // Se o usuário não existe, cria um novo
-            // O campo 'password_hash' não pode ser nulo, então geramos um hash aleatório e seguro
-            // que nunca será usado para login.
             const randomPassword = crypto.randomBytes(32).toString('hex');
             const passwordHash = await bcrypt.hash(randomPassword, 10);
             
-            const newUserResult = await db.query(
+            const createUserQuery = db.query(
                 "INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id, username",
                 [email, passwordHash]
             );
+            const newUserResult = await withTimeout(createUserQuery, TIMEOUT_MS);
             user = newUserResult.rows[0];
         }
 
-        // Gera o token da nossa aplicação para o usuário logado
         const appToken = jwt.sign(
             { userId: user.id, username: user.username },
             JWT_SECRET,
@@ -188,47 +180,43 @@ app.post('/api/auth/google', async (req, res) => {
         });
 
     } catch (err) {
-        console.error('Erro na autenticação com Google:', err);
-        res.status(500).json({ message: 'Erro interno no servidor durante a autenticação com Google.' });
+        handleRouteError(err, res, 'login com Google');
     }
 });
 
 
-// --- ROTAS PROTEGIDAS (requerem token) ---
+// --- ROTAS PROTEGIDAS ---
 
 // --- AGENDAMENTOS ---
 
-// Obter todos os agendamentos do usuário logado
 app.get('/api/appointments', authenticateToken, async (req, res) => {
     try {
-        const { rows } = await db.query(
+        const dbQuery = db.query(
             "SELECT * FROM appointments WHERE user_id = $1 ORDER BY datetime ASC",
             [req.user.userId]
         );
+        const { rows } = await withTimeout(dbQuery, TIMEOUT_MS);
         res.json(rows);
     } catch (err) {
-        console.error('Erro ao buscar agendamentos:', err);
-        res.status(500).json({ message: 'Erro ao buscar agendamentos.' });
+        handleRouteError(err, res, 'buscar agendamentos');
     }
 });
 
-// Criar um novo agendamento
 app.post('/api/appointments', authenticateToken, async (req, res) => {
     try {
         const { clientName, clientPhone, service, datetime, value, observations } = req.body;
-        const newAppointment = await db.query(
+        const dbQuery = db.query(
             `INSERT INTO appointments (user_id, client_name, client_phone, service, datetime, value, observations, status) 
              VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled') RETURNING *`,
             [req.user.userId, clientName, clientPhone, service, datetime, value, observations]
         );
+        const newAppointment = await withTimeout(dbQuery, TIMEOUT_MS);
         res.status(201).json(newAppointment.rows[0]);
     } catch (err) {
-        console.error('Erro ao criar agendamento:', err);
-        res.status(500).json({ message: 'Erro ao criar agendamento.' });
+        handleRouteError(err, res, 'criar agendamento');
     }
 });
 
-// Atualizar um agendamento
 app.put('/api/appointments/:id', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
@@ -249,84 +237,79 @@ app.put('/api/appointments/:id', authenticateToken, async (req, res) => {
         const queryText = `UPDATE appointments SET ${updates} WHERE id = $1 AND user_id = $2 RETURNING *`;
         const queryParams = [id, req.user.userId, ...values];
         
-        const result = await db.query(queryText, queryParams);
+        const dbQuery = db.query(queryText, queryParams);
+        const result = await withTimeout(dbQuery, TIMEOUT_MS);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ message: 'Agendamento não encontrado ou não pertence a este usuário.' });
         }
         res.json(result.rows[0]);
     } catch (err) {
-        console.error('Erro ao atualizar agendamento:', err);
-        res.status(500).json({ message: 'Erro ao atualizar agendamento.' });
+        handleRouteError(err, res, 'atualizar agendamento');
     }
 });
 
-
-// Deletar (cancelar) um agendamento
 app.delete('/api/appointments/:id', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
-        const result = await db.query(
+        const dbQuery = db.query(
             "DELETE FROM appointments WHERE id = $1 AND user_id = $2",
             [id, req.user.userId]
         );
+        const result = await withTimeout(dbQuery, TIMEOUT_MS);
         if (result.rowCount === 0) {
             return res.status(404).json({ message: 'Agendamento não encontrado ou não pertence a este usuário.' });
         }
-        res.status(204).send(); // No Content
+        res.status(204).send();
     } catch (err) {
-        console.error('Erro ao deletar agendamento:', err);
-        res.status(500).json({ message: 'Erro ao deletar agendamento.' });
+        handleRouteError(err, res, 'deletar agendamento');
     }
 });
 
 // --- HORÁRIOS BLOQUEADOS ---
 
-// Obter todos os horários bloqueados
 app.get('/api/blocked-slots', authenticateToken, async (req, res) => {
     try {
-        const { rows } = await db.query(
+        const dbQuery = db.query(
             "SELECT id, user_id, date::text, start_time, end_time, is_full_day FROM blocked_slots WHERE user_id = $1 ORDER BY date ASC, start_time ASC",
             [req.user.userId]
         );
+        const { rows } = await withTimeout(dbQuery, TIMEOUT_MS);
         res.json(rows);
     } catch (err) {
-        console.error('Erro ao buscar horários bloqueados:', err);
-        res.status(500).json({ message: 'Erro ao buscar horários bloqueados.' });
+        handleRouteError(err, res, 'buscar bloqueios');
     }
 });
 
-// Criar um novo bloqueio
 app.post('/api/blocked-slots', authenticateToken, async (req, res) => {
     try {
         const { date, isFullDay, startTime, endTime } = req.body;
-        const newSlot = await db.query(
+        const dbQuery = db.query(
             `INSERT INTO blocked_slots (user_id, date, is_full_day, start_time, end_time) 
              VALUES ($1, $2, $3, $4, $5) RETURNING id, user_id, date::text, start_time, end_time, is_full_day`,
             [req.user.userId, date, isFullDay, startTime || null, endTime || null]
         );
+        const newSlot = await withTimeout(dbQuery, TIMEOUT_MS);
         res.status(201).json(newSlot.rows[0]);
     } catch (err) {
-        console.error('Erro ao criar bloqueio:', err);
-        res.status(500).json({ message: 'Erro ao criar bloqueio.' });
+        handleRouteError(err, res, 'criar bloqueio');
     }
 });
 
-// Deletar um bloqueio
 app.delete('/api/blocked-slots/:id', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
-        const result = await db.query(
+        const dbQuery = db.query(
             "DELETE FROM blocked_slots WHERE id = $1 AND user_id = $2",
             [id, req.user.userId]
         );
+        const result = await withTimeout(dbQuery, TIMEOUT_MS);
         if (result.rowCount === 0) {
             return res.status(404).json({ message: 'Bloqueio não encontrado ou não pertence a este usuário.' });
         }
         res.status(204).send();
     } catch (err) {
-        console.error('Erro ao deletar bloqueio:', err);
-        res.status(500).json({ message: 'Erro ao deletar bloqueio.' });
+        handleRouteError(err, res, 'deletar bloqueio');
     }
 });
 
