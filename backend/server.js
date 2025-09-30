@@ -7,16 +7,24 @@ const { OAuth2Client } = require('google-auth-library');
 const crypto = require('crypto');
 
 const app = express();
-const PORT = 3001;
+// A porta é fornecida pelo ambiente de hospedagem (Netlify, Heroku, etc.)
+// ou usa 3001 como padrão para desenvolvimento local.
+const PORT = process.env.PORT || 3001;
 
-// ATENÇÃO: Mude este segredo para algo único e seguro!
-const JWT_SECRET = 'seu-segredo-super-secreto-e-longo-para-jwt';
+// O segredo do JWT DEVE ser uma variável de ambiente em produção para segurança.
+// Configure 'JWT_SECRET' nas variáveis de ambiente do seu site na Netlify.
+const JWT_SECRET = process.env.JWT_SECRET || 'seu-segredo-super-secreto-e-longo-para-jwt';
 
 // ATENÇÃO: Adicione o ID do Cliente do seu projeto Google Cloud Console aqui
 const GOOGLE_CLIENT_ID = 'SEU_GOOGLE_CLIENT_ID_AQUI'; 
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 const TIMEOUT_MS = 7000;
+
+if (process.env.NODE_ENV === 'production' && JWT_SECRET === 'seu-segredo-super-secreto-e-longo-para-jwt') {
+    console.error('ERRO FATAL: JWT_SECRET não foi configurado para produção! A aplicação será encerrada.');
+    process.exit(1); // Encerra a aplicação se o segredo padrão for usado em produção.
+}
 
 // Helper para garantir que uma operação não exceda um tempo limite
 const withTimeout = (promise, ms) => {
@@ -317,5 +325,4 @@ app.delete('/api/blocked-slots/:id', authenticateToken, async (req, res) => {
 // Iniciar o servidor
 app.listen(PORT, () => {
     console.log(`🎉 Servidor backend rodando na porta ${PORT}`);
-    console.log(`🔗 Frontend deve fazer requisições para http://localhost:${PORT}/api/...`);
 });

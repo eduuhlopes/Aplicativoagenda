@@ -1,15 +1,28 @@
 const { Pool } = require('pg');
 
-// ATENÇÃO: Configure suas credenciais do PostgreSQL aqui.
-// É altamente recomendado usar variáveis de ambiente para isso em um ambiente de produção.
+// A configuração do banco de dados agora é lida a partir de variáveis de ambiente.
+// Isso é essencial para a implantação em serviços como Netlify, Heroku, etc.
+//
+// 1. CRIE UM BANCO DE DADOS POSTGRESQL EM NUVEM:
+//    - Use um serviço como Neon (neon.tech), Supabase, ou ElephantSQL.
+//    - Após criar, você receberá uma "Connection String" ou "URL de Conexão".
+//
+// 2. CONFIGURE A VARIÁVEL DE AMBIENTE:
+//    - No painel do seu serviço de hospedagem (Netlify), vá para as configurações
+//      do seu site > Build & deploy > Environment variables.
+//    - Crie uma nova variável de ambiente chamada DATABASE_URL.
+//    - Cole a URL de conexão do seu banco de dados como o valor.
+//      Exemplo: postgres://[user]:[password]@[host]:[port]/[database]
+//
+// O 'localhost' NÃO FUNCIONA em produção pois o servidor e o banco não estão na mesma máquina.
 const pool = new Pool({
-  user: 'postgres', // Ex: 'postgres'
-  host: 'localhost',
-  database: 'postgres', // Crie um banco com este nome ou altere aqui
-  password: '150916Pietro@',
-  port: 5432,
-  statement_timeout: 5000, // Timeout de 5s para queries. Evita que a aplicação trave.
-  connectionTimeoutMillis: 5000, // Timeout de 5s para estabelecer a conexão.
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    // A maioria dos bancos de dados em nuvem exige conexão SSL.
+    rejectUnauthorized: false
+  },
+  statement_timeout: 5000,
+  connectionTimeoutMillis: 5000,
 });
 
 module.exports = {
