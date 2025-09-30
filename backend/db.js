@@ -5,10 +5,11 @@ const { Pool } = require('pg');
 const pool = new Pool({
   user: 'postgres', // Ex: 'postgres'
   host: 'localhost',
-  database: 'agenda_spaco_delas', // Crie um banco com este nome ou altere aqui
+  database: 'postgres', // Crie um banco com este nome ou altere aqui
   password: '150916Pietro@',
   port: 5432,
   statement_timeout: 5000, // Timeout de 5s para queries. Evita que a aplicação trave.
+  connectionTimeoutMillis: 5000, // Timeout de 5s para estabelecer a conexão.
 });
 
 module.exports = {
