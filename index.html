@@ -3,65 +3,217 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Spaço delas - Agendador</title>
+    <title>Spaço delas - Esmalteria e Depilação</title>
 
     <!-- PWA Meta Tags -->
-    <meta name="theme-color" content="#EC4899"/>
+    <meta name="theme-color" content="#C77D93"/>
     <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" href="/logo.svg" />
+    <link id="apple-touch-icon" rel="apple-touch-icon" href="/logo.png" />
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&family=Playfair+Display:wght@700;900&family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
     <script type="importmap">
 {
   "imports": {
     "react": "https://aistudiocdn.com/react@^19.1.1",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
-    "react/": "https://aistudiocdn.com/react@^19.1.1/",
-    "path": "https://aistudiocdn.com/path@^0.12.7",
-    "url": "https://aistudiocdn.com/url@^0.11.4",
-    "express": "https://aistudiocdn.com/express@^5.1.0",
-    "dotenv": "https://aistudiocdn.com/dotenv@^17.2.3",
-    "cors": "https://aistudiocdn.com/cors@^2.8.5",
-    "pg": "https://aistudiocdn.com/pg@^8.16.3"
+    "react/": "https://aistudiocdn.com/react@^19.1.1/"
   }
 }
 </script>
+    <script>
+      (function() {
+        try {
+          // Default to 'pink' if no theme is set
+          const theme = localStorage.getItem('app-theme') || 'pink';
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) {
+          console.error("Failed to set theme from localStorage", e);
+        }
+      })();
+    </script>
     <style>
       :root {
-        --background: #FFF7FA;
-        --surface: rgba(255, 255, 255, 0.85);
-        --surface-opaque: #FFFFFF;
-        --primary: #EC4899;
-        --primary-hover: #DB2777;
-        --secondary: #A855F7;
-        --accent: #F472B6;
-        --text-dark: #581C87;
-        --text-light: #86198F;
-        --text-body: #6b21a8;
-        --border: #FBCFE8;
-        --highlight: #fce7f3;
+        /* Default Pink Theme + Status Colors */
+        --background: #FEFBFB;
+        --surface: rgba(253, 242, 248, 0.85);
+        --surface-opaque: #FDF2F8;
+        --primary: #C77D93;
+        --primary-light: #E6A4B4;
+        --primary-hover: #B36A81;
+        --secondary: #8A5F8A;
+        --accent: #E6A4B4;
+        --text-dark: #4A235A;
+        --text-body: #57415F;
+        --border: #F5D4DE;
+        --highlight: #FDEDF2;
+        --success: #10B981;
+        --info: #3B82F6;
+        --warning: #F59E0B;
+        --danger: #EF4444;
       }
       
+      [data-theme="blue"] {
+        --background: #F8FBFF;
+        --surface: rgba(240, 248, 255, 0.85);
+        --surface-opaque: #F0F8FF;
+        --primary: #A7C7E7;
+        --primary-light: #B9D9EB;
+        --primary-hover: #89A9C9;
+        --secondary: #6A8AAB;
+        --accent: #B9D9EB;
+        --text-dark: #2C3E50;
+        --text-body: #34495E;
+        --border: #D6E6F2;
+        --highlight: #EBF5FF;
+      }
+
+      [data-theme="green"] {
+        --background: #F8FFF8;
+        --surface: rgba(240, 255, 244, 0.85);
+        --surface-opaque: #F0FFF4;
+        --primary: #98D7C2;
+        --primary-light: #BDECB6;
+        --primary-hover: #7EBFAC;
+        --secondary: #5C946E;
+        --accent: #BDECB6;
+        --text-dark: #2F4858;
+        --text-body: #4A6572;
+        --border: #D7F9E9;
+        --highlight: #E8F5E9;
+      }
+
       body {
         background-color: var(--background);
-        font-family: 'Lato', sans-serif;
+        font-family: 'Poppins', sans-serif;
         color: var(--text-body);
+        transition: background-color 0.3s ease;
       }
 
       h1, h2, h3, h4, h5, h6 {
         font-family: 'Playfair Display', serif;
         color: var(--text-dark);
       }
-
-      @keyframes highlight-fade {
-        0% { background-color: var(--highlight); transform: scale(1.02); }
-        100% { background-color: var(--surface-opaque); transform: scale(1); }
+      
+      header {
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+        padding: 1.5rem 2rem;
+        border-radius: 1.5rem;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        color: white;
       }
-      .animate-highlight {
-        animation: highlight-fade 2s ease-out forwards;
+      header h1, header p {
+        color: white;
+        text-shadow: 1px 1px 3px rgba(0,0,0,0.1);
+      }
+      header .notification-bell-button {
+          color: white;
+          background-color: rgba(255, 255, 255, 0.1);
+          backdrop-filter: blur(10px);
+      }
+       header .notification-bell-button:hover {
+          background-color: rgba(255, 255, 255, 0.2);
+       }
+
+
+      .font-brand {
+        font-family: 'Dancing Script', cursive;
+      }
+      
+      /* Animation for new appointments: fade in, pop, and highlight */
+      @keyframes new-item-pop-in {
+        0% {
+          opacity: 0;
+          transform: scale(0.95) translateY(10px);
+          background-color: var(--highlight);
+        }
+        70% {
+          opacity: 1;
+          transform: scale(1.02) translateY(0);
+          background-color: var(--highlight);
+        }
+        100% {
+          opacity: 1;
+          transform: scale(1);
+          background-color: transparent;
+        }
+      }
+      .animate-new-item {
+        animation: new-item-pop-in 1.5s ease-out forwards;
+      }
+
+      /* Animation for modals */
+      @keyframes modal-zoom-in {
+        from {
+          opacity: 0;
+          transform: scale(0.9);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+      .animate-modal-in {
+        animation: modal-zoom-in 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+      }
+      
+      /* New animation for mobile full-screen views */
+      @keyframes slide-in-up {
+        from {
+          transform: translateY(100%);
+        }
+        to {
+          transform: translateY(0);
+        }
+      }
+      .animate-slide-in-up {
+        animation: slide-in-up 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+      }
+
+      /* Animation for input validation shake */
+      @keyframes shake-horizontal {
+        0%, 100% { transform: translateX(0); }
+        10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+        20%, 40%, 60%, 80% { transform: translateX(4px); }
+      }
+      .animate-shake {
+        animation: shake-horizontal 0.5s cubic-bezier(.45,.05,.55,.95) both;
+      }
+
+
+      /* Animation for modal backdrop */
+      @keyframes backdrop-fade-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      .animate-backdrop-in {
+        animation: backdrop-fade-in 0.3s ease-out forwards;
+      }
+
+      /* Animation for popovers */
+      @keyframes popover-fade-in-down {
+        from {
+          opacity: 0;
+          transform: translateY(-10px) scale(0.98);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+      .animate-popover-in {
+        animation: popover-fade-in-down 0.2s ease-out forwards;
+      }
+
+      /* Animation for view switching */
+      @keyframes view-fade-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      .animate-view-in {
+        animation: view-fade-in 0.4s ease-in-out forwards;
       }
 
       @keyframes fade-out-and-slide {
@@ -85,6 +237,201 @@
       .animate-fade-out {
         animation: fade-out-and-slide 0.5s ease-in forwards;
         overflow: hidden;
+      }
+      
+      /* Scrollbar styling for user list on login screen */
+      .user-list-scrollbar::-webkit-scrollbar {
+        height: 6px;
+      }
+      .user-list-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .user-list-scrollbar::-webkit-scrollbar-thumb {
+        background-color: var(--border);
+        border-radius: 10px;
+      }
+      .user-list-scrollbar::-webkit-scrollbar-thumb:hover {
+        background-color: var(--accent);
+      }
+
+
+      /* Styles for Collapsible Section */
+      .collapsible-content {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      }
+
+      .collapsible-content.open {
+        max-height: 1000px; /* A large enough value to not clip content */
+      }
+
+      /* Calendar View Styles */
+      .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 4px;
+      }
+      .calendar-day-cell {
+        min-height: 120px;
+        position: relative;
+        transition: background-color 0.2s ease-in-out;
+      }
+      .calendar-day-cell.other-month {
+        background-color: rgba(240, 240, 240, 0.5);
+        color: #aaa;
+      }
+      .calendar-day-cell.is-today {
+        background-color: var(--highlight);
+        border: 2px solid var(--accent);
+      }
+      .appointment-pill {
+        cursor: pointer;
+        padding: 2px 6px;
+        margin-bottom: 2px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        color: white;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        transition: background-color 0.2s;
+      }
+      .timeline-view {
+        position: relative;
+        background-size: 100% 60px; /* 60px corresponds to 1 hour */
+        background-image: linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+        height: calc(14 * 60px); /* 7am to 9pm is 14 hours */
+      }
+       .timeline-hour-label {
+        position: absolute;
+        left: -50px;
+        transform: translateY(-50%);
+        font-size: 0.75rem;
+        color: var(--secondary);
+      }
+
+      /* Toast Notifications */
+      .toast-container {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+      }
+      @keyframes toast-in {
+        from {
+          opacity: 0;
+          transform: translateY(20px) scale(0.9);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+      .toast {
+        animation: toast-in 0.5s cubic-bezier(0.21, 1.02, 0.73, 1) forwards;
+      }
+      
+      /* Bottom Navigation & FAB */
+      .bottom-nav {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 65px;
+        background-color: var(--surface-opaque);
+        backdrop-filter: blur(10px);
+        border-top: 1px solid var(--border);
+        box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        z-index: 50;
+      }
+      .nav-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-body);
+        transition: color 0.2s;
+        flex-grow: 1;
+      }
+      .nav-item.active {
+        color: var(--primary);
+      }
+      .fab {
+        position: fixed;
+        bottom: 85px;
+        right: 20px;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        z-index: 51;
+        transition: transform 0.2s ease-out;
+      }
+      .fab:active {
+        transform: scale(0.9);
+      }
+
+      /* Styles for Form Containers (Appointment & Client) */
+      .form-container {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 50;
+        pointer-events: none;
+      }
+
+      .form-container.visible {
+        pointer-events: auto;
+      }
+
+      .form-container > form {
+        background-color: var(--surface-opaque);
+        backdrop-filter: blur(12px);
+        border: 1px solid var(--border);
+        border-radius: 1.5rem;
+        padding: 1.5rem 2rem;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        width: 100%;
+        max-width: 640px;
+        max-height: 90vh;
+        overflow-y: auto;
+      }
+      
+      .form-container.visible > form {
+          animation: modal-zoom-in 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+      }
+
+      /* On mobile, make it slide up from the bottom */
+      @media (max-width: 640px) {
+          .form-container {
+              align-items: flex-end;
+          }
+          .form-container > form {
+              max-width: 100%;
+              width: 100%;
+              height: 95vh;
+              max-height: 95vh;
+              border-radius: 1.5rem 1.5rem 0 0;
+          }
+          .form-container.visible > form {
+              animation: slide-in-up 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+          }
       }
     </style>
   </head>

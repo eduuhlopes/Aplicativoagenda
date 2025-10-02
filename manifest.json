@@ -4,13 +4,13 @@
   "description": "Uma aplicação web para agendar, visualizar e gerenciar horários para o salão Spaço delas, com uma estética feminina e clean.",
   "icons": [
     {
-      "src": "logo.svg",
-      "type": "image/svg+xml",
-      "sizes": "192x192 512x512"
+      "src": "logo.png",
+      "type": "image/png",
+      "sizes": "512x512"
     }
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#EC4899",
-  "background_color": "#FFF7FA"
+  "theme_color": "#C77D93",
+  "background_color": "#FEFBFB"
 }

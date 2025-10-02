@@ -2,7 +2,7 @@ const CACHE_NAME = 'spaco-delas-cache-v1';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
-  '/logo.svg',
+  '/logo.png',
   '/manifest.json'
 ];
 
@@ -58,6 +58,51 @@ self.addEventListener('fetch', (event) => {
       }).catch(error => {
         console.error('Fetch failed:', error);
       });
+    })
+  );
+});
+
+self.addEventListener('push', event => {
+  console.log('[Service Worker] Push Received.');
+  let data = {};
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (e) {
+      console.error('Push event data is not JSON', e);
+      data = { title: 'Nova Notificação', body: event.data.text() };
+    }
+  } else {
+    data = { title: 'Spaço Delas', body: 'Você tem um novo lembrete!' };
+  }
+
+  const title = data.title || 'Spaço Delas';
+  const options = {
+    body: data.body || 'Lembrete de agendamento.',
+    icon: '/logo.png',
+    badge: '/logo.png',
+    vibrate: [200, 100, 200],
+    tag: data.tag || 'spaco-delas-notification',
+    renotify: true,
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', event => {
+  console.log('[Service Worker] Notification click Received.');
+  event.notification.close();
+  event.waitUntil(
+    clients.matchAll({ type: "window" }).then(clientList => {
+      for (let i = 0; i < clientList.length; i++) {
+        const client = clientList[i];
+        if (client.url === self.location.origin + '/' && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow('/');
+      }
     })
   );
 });

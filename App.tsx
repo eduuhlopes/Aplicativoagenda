@@ -1,741 +1,522 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { Appointment, ModalInfo, Client, BlockedSlot } from './types';
-import Header from './components/Header';
+
+
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+
+// Components
 import AppointmentForm from './components/AppointmentForm';
-import AppointmentList from './components/AppointmentList';
+import CalendarView from './components/CalendarView';
+import ClientForm from './components/ClientForm';
+import ClientList from './components/ClientList';
+import CollapsibleSection from './components/CollapsibleSection';
+import Header from './components/Header';
+import LoginScreen from './components/LoginScreen';
 import Modal from './components/Modal';
 import RevenueDashboard from './components/RevenueDashboard';
-import ClientList from './components/ClientList';
-import DateTimePickerModal from './components/DateTimePickerModal';
+import ServicesView from './components/ServicesView';
+import Toast from './components/Toast';
+import ThemeSwitcher, { themes } from './components/ThemeSwitcher';
 import BackupRestore from './components/BackupRestore';
+import LogoUploader from './components/LogoUploader';
+import NotificationManager from './components/NotificationManager';
+import UserManagement from './components/UserManagement';
+
+// Utils, Types, and Constants
+import { getAverageColor, getContrastColor, generateGradient } from './components/colorUtils';
+import { Appointment, Client, User, BlockedSlot, Service, MonthlyPackage, EnrichedClient, ModalInfo, AppointmentStatus } from './types';
 import { SERVICES } from './constants';
 
-const AgendaManagementIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 inline-block ml-2 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2zM7 16h.01M12 16h.01M17 16h.01" />
+const PlusIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+      <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
     </svg>
 );
 
-const AgendaManagement: React.FC<{
-    blockedSlots: BlockedSlot[];
-    onBlockSlot: (data: { date: Date, isFullDay: boolean, startTime?: string, endTime?: string }) => void;
-    onUnblockSlot: (id: number) => void;
-    appointments: Appointment[];
-}> = ({ blockedSlots, onBlockSlot, onUnblockSlot, appointments }) => {
-    const [isPickerOpen, setIsPickerOpen] = useState(false);
 
-    const handleDateSelectAndBlock = (data: { date: Date, isFullDay: boolean, startTime?: string, endTime?: string }) => {
-        onBlockSlot(data);
-        setIsPickerOpen(false);
-    };
-
-    return (
-        <>
-            <div className="border-t-2 border-pink-200 pt-8 mt-8">
-                <h2 className="text-2xl font-bold text-purple-800 text-center mb-4 flex items-center justify-center">
-                    Gerenciar Agenda
-                    <AgendaManagementIcon />
-                </h2>
-                <div className="mb-6 text-center">
-                    <button
-                        onClick={() => setIsPickerOpen(true)}
-                        className="w-full py-3 px-4 bg-yellow-500 text-white font-bold text-lg rounded-lg shadow-md hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 transition-transform transform hover:scale-105"
-                    >
-                        Bloquear Horário
-                    </button>
-                </div>
-                <div>
-                    <h3 className="text-xl font-semibold text-purple-700 mb-3 text-center">Horários Bloqueados</h3>
-                     <div className="flex-grow overflow-y-auto pr-2 -mr-2 space-y-2 max-h-48">
-                        {blockedSlots.length === 0 ? (
-                            <p className="text-purple-600 text-center italic">Nenhum horário bloqueado.</p>
-                        ) : (
-                            blockedSlots.map(slot => (
-                                <div key={slot.id} className="bg-white p-3 rounded-lg shadow flex items-center justify-between">
-                                    <p className="font-semibold text-purple-800">
-                                        {new Date(slot.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                                        {' - '}
-                                        {slot.isFullDay ? 'Dia Inteiro' : (slot.endTime ? `${slot.startTime} às ${slot.endTime}` : slot.startTime)}
-                                    </p>
-                                    <button
-                                        onClick={() => onUnblockSlot(slot.id)}
-                                        className="px-3 py-1 bg-green-500 text-white font-semibold rounded-lg shadow-sm hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-green-500 transition-colors text-sm"
-                                    >
-                                        Desbloquear
-                                    </button>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                </div>
-            </div>
-            <DateTimePickerModal
-                isOpen={isPickerOpen}
-                onClose={() => setIsPickerOpen(false)}
-                onConfirm={handleDateSelectAndBlock}
-                showBlockDayToggle={true}
-                blockedSlots={blockedSlots}
-                appointments={appointments}
-            />
-        </>
-    );
+// Helper to parse dates from JSON
+const dateTimeReviver = (key: string, value: any) => {
+    if ((key === 'datetime' || key === 'endTime' || key === 'date') && typeof value === 'string') {
+        const date = new Date(value);
+        if (!isNaN(date.getTime())) {
+            return date;
+        }
+    }
+    return value;
 };
 
+// Generic hook for using localStorage
+const usePersistentState = <T,>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] => {
+    const [state, setState] = useState<T>(() => {
+        try {
+            const storedValue = localStorage.getItem(key);
+            return storedValue ? JSON.parse(storedValue, dateTimeReviver) : defaultValue;
+        } catch (error) {
+            console.error("Error reading from localStorage for key:", key, error);
+            return defaultValue;
+        }
+    });
 
-const ReminderBanner: React.FC<{ reminders: Appointment[]; onSend: () => void; onClose: () => void; }> = ({ reminders, onSend, onClose }) => {
-    if (reminders.length === 0) return null;
+    useEffect(() => {
+        try {
+            localStorage.setItem(key, JSON.stringify(state));
+        } catch (error) {
+            console.error("Error writing to localStorage for key:", key, error);
+        }
+    }, [key, state]);
 
-    return (
-        <div className="bg-teal-100 border-t-4 border-teal-500 rounded-b text-teal-900 px-4 py-3 shadow-md my-4 relative" role="alert">
-            <div className="flex items-center">
-                <div className="py-1"><svg className="fill-current h-6 w-6 text-teal-500 mr-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zM9 5v6h2V5H9zm0 8h2v2H9v-2z"/></svg></div>
-                <div>
-                    <p className="font-bold">Lembretes Automáticos Prontos</p>
-                    <p className="text-sm">Você tem {reminders.length} agendamento(s) que precisam de um lembrete.</p>
-                </div>
-                <div className="ml-auto">
-                    <button 
-                        onClick={onSend}
-                        className="bg-teal-500 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded"
-                    >
-                        Enviar Agora
-                    </button>
-                </div>
-            </div>
-             <button onClick={onClose} className="absolute top-0 bottom-0 right-0 px-4 py-3">
-                <svg className="fill-current h-6 w-6 text-teal-500" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l2.758-3.15-2.759-3.152a1.2 1.2 0 1 1 1.697-1.697L10 8.183l2.651-3.031a1.2 1.2 0 1 1 1.697 1.697l-2.758 3.152 2.758 3.15a1.2 1.2 0 0 1 0 1.698z"/></svg>
-            </button>
-        </div>
-    );
+    return [state, setState];
 };
 
 
 const App: React.FC = () => {
-    const [appointments, setAppointments] = useState<Appointment[]>([]);
-    const [blockedSlots, setBlockedSlots] = useState<BlockedSlot[]>([]);
-    const [modalInfo, setModalInfo] = useState<ModalInfo>({
-        isOpen: false,
-        title: '',
-        message: '',
-        onConfirm: undefined,
-    });
-    const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
-    const [activeView, setActiveView] = useState<'appointments' | 'clients'>('appointments');
-    const [notificationAppointments, setNotificationAppointments] = useState<Appointment[]>([]);
+    // --- STATE MANAGEMENT ---
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const storageKeyPrefix = useMemo(() => currentUser ? `spaco-delas-${currentUser.username}` : 'spaco-delas-global', [currentUser]);
+
+    // Data State
+    const [appointments, setAppointments] = usePersistentState<Appointment[]>(`${storageKeyPrefix}-appointments`, []);
+    const [clients, setClients] = usePersistentState<Client[]>(`${storageKeyPrefix}-clients`, []);
+    const [blockedSlots, setBlockedSlots] = usePersistentState<BlockedSlot[]>(`${storageKeyPrefix}-blockedSlots`, []);
+    const [services, setServices] = usePersistentState<Service[]>(`${storageKeyPrefix}-services`, SERVICES);
+    const [monthlyPackage, setMonthlyPackage] = usePersistentState<MonthlyPackage>(`${storageKeyPrefix}-package`, { serviceName: 'Pé+Mão', price: 180 });
+    
+    // Global/UI State (some are user-specific, some are global)
+    const [logoUrl, setLogoUrl] = usePersistentState<string>('spaco-delas-global-logo', '/logo.png');
+    const [currentTheme, setCurrentTheme] = usePersistentState<string>('spaco-delas-global-theme', 'pink');
+    const [activeView, setActiveView] = useState<'agenda' | 'calendar' | 'clients' | 'services' | 'settings'>('agenda');
+    
+    // Form & Modal Visibility State
+    const [isFormVisible, setIsFormVisible] = useState(false);
+    const [isClientFormVisible, setIsClientFormVisible] = useState(false);
+    const [appointmentToEdit, setAppointmentToEdit] = useState<Appointment | null>(null);
+    const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
+    const [modalInfo, setModalInfo] = useState<ModalInfo>({ isOpen: false, title: '', message: '' });
+    const [toastInfo, setToastInfo] = useState<{ id: number; message: string; type: 'success' | 'error' } | null>(null);
     const [isNotificationPopoverOpen, setIsNotificationPopoverOpen] = useState(false);
-    const [highlightedAppointmentId, setHighlightedAppointmentId] = useState<number | null>(null);
-    const [removingAppointmentId, setRemovingAppointmentId] = useState<number | null>(null);
-    const [remindersToSend, setRemindersToSend] = useState<Appointment[]>([]);
+    const [headerStyle, setHeaderStyle] = useState<{ background: string; color: string; notificationBg: string; } | null>(null);
+    const appContainerRef = useRef<HTMLDivElement>(null);
 
-    const nextId = useRef(Date.now());
-    const backupTimeoutRef = useRef<number | null>(null);
+    // --- EFFECTS ---
 
-    const showModal = (title: string, message: string, onConfirm?: () => void) => {
-        setModalInfo({ isOpen: true, title, message, onConfirm });
-    };
-
-    const closeModal = () => {
-        setModalInfo({ isOpen: false, title: '', message: '', onConfirm: undefined });
-    };
-    
-    // Load data from localStorage on initial render
+    // Check for logged-in user in session storage
     useEffect(() => {
         try {
-            const storedAppointments = localStorage.getItem('spa-appointments');
-            if (storedAppointments) {
-                const parsed = JSON.parse(storedAppointments).map((a: any) => {
-                    const datetime = new Date(a.datetime);
-                    let endTime = a.endTime ? new Date(a.endTime) : null;
-
-                    const servicesWithDuration = (a.services || []).map((s: any) => {
-                        if (typeof s.duration !== 'number') {
-                            const serviceDef = SERVICES.find(def => def.name === s.name);
-                            return { ...s, duration: serviceDef?.duration || 30 };
-                        }
-                        return s;
-                    });
-                    
-                    if (!endTime) { // Backward compatibility for old data
-                        const totalDuration = servicesWithDuration.reduce((sum: number, s: any) => sum + s.duration, 0);
-                        endTime = new Date(datetime.getTime() + totalDuration * 60 * 1000);
-                    }
-                    return { ...a, id: Number(a.id), datetime, endTime, services: servicesWithDuration };
-                });
-                setAppointments(parsed);
+            const storedUser = sessionStorage.getItem('spaco-delas-currentUser');
+            if (storedUser) {
+                setCurrentUser(JSON.parse(storedUser));
             }
-
-            const storedBlockedSlots = localStorage.getItem('spa-blocked-slots');
-            if (storedBlockedSlots) {
-                const parsed = JSON.parse(storedBlockedSlots).map((s: any) => ({ ...s, id: Number(s.id), date: new Date(s.date) }));
-                setBlockedSlots(parsed);
-            }
-        } catch (error) {
-            console.error("Failed to load data from localStorage", error);
-            showModal("Erro", "Não foi possível carregar os dados salvos.");
+        } catch (e) {
+            console.error("Failed to load user from session storage", e);
         }
     }, []);
-
-    // Save appointments to localStorage whenever they change
-    useEffect(() => {
-        try {
-            localStorage.setItem('spa-appointments', JSON.stringify(appointments));
-        } catch (error) {
-            console.error("Failed to save appointments to localStorage", error);
-        }
-    }, [appointments]);
-
-    // Save blocked slots to localStorage whenever they change
-    useEffect(() => {
-        try {
-            localStorage.setItem('spa-blocked-slots', JSON.stringify(blockedSlots));
-        } catch (error) {
-            console.error("Failed to save blocked slots to localStorage", error);
-        }
-    }, [blockedSlots]);
     
-    // Automatic backup logic
+    // Apply theme and generate header style from logo
     useEffect(() => {
-        if (backupTimeoutRef.current) {
-            clearTimeout(backupTimeoutRef.current);
-        }
-
-        backupTimeoutRef.current = window.setTimeout(() => {
-            if (appointments.length === 0 && blockedSlots.length === 0) {
-                return; // Don't backup empty state
-            }
-
-            try {
-                const today = new Date();
-                const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-                const backupKey = `spa-autobackup-${todayString}`;
-
-                const backupData = { appointments, blockedSlots };
-                localStorage.setItem(backupKey, JSON.stringify(backupData));
-                
-                // Clean up old backups, keeping the last 7
-                const allBackupKeys = Object.keys(localStorage)
-                    .filter(key => key.startsWith('spa-autobackup-'))
-                    .sort() // Sorts YYYY-MM-DD strings correctly
-                    .reverse(); // Newest first
-
-                if (allBackupKeys.length > 7) {
-                    const keysToRemove = allBackupKeys.slice(7);
-                    keysToRemove.forEach(key => localStorage.removeItem(key));
-                }
-            } catch (error) {
-                console.error("Failed to create automatic backup", error);
-            }
-        }, 2000); // Debounce backup for 2 seconds after data change
-
-        return () => {
-            if (backupTimeoutRef.current) {
-                clearTimeout(backupTimeoutRef.current);
-            }
-        };
-    }, [appointments, blockedSlots]);
-
-
-     useEffect(() => {
-        const now = new Date();
-        const twentyFourHoursFromNow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        document.documentElement.setAttribute('data-theme', currentTheme);
         
-        const upcoming = appointments.filter(appt => 
-            appt.status === 'scheduled' &&
-            new Date(appt.datetime) > now &&
-            new Date(appt.datetime) <= twentyFourHoursFromNow
-        );
-        setNotificationAppointments(upcoming);
-    }, [appointments]);
-
-     // Automatic reminder checking
-    useEffect(() => {
-        const checkReminders = () => {
-            const now = new Date();
-            const lowerBound = new Date(now.getTime() + 23 * 60 * 60 * 1000);
-            const upperBound = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-
-            const dueForReminder = appointments.filter(appt => {
-                if (appt.status !== 'scheduled' || appt.reminderSent) {
-                    return false;
-                }
-                const apptTime = new Date(appt.datetime);
-                return apptTime > lowerBound && apptTime <= upperBound;
-            });
+        const setFallbackHeader = () => {
+            const theme = themes.find(t => t.name === currentTheme);
+            const primaryColor = theme ? theme.color : '#C77D93'; // Default pink
             
-            setRemindersToSend(prev => {
-                const existingIds = new Set(prev.map(r => r.id));
-                const newReminders = dueForReminder.filter(r => !existingIds.has(r.id));
-                return [...prev, ...newReminders];
+            const r = parseInt(primaryColor.slice(1, 3), 16);
+            const g = parseInt(primaryColor.slice(3, 5), 16);
+            const b = parseInt(primaryColor.slice(5, 7), 16);
+            
+            setHeaderStyle({
+                background: generateGradient(r, g, b),
+                color: getContrastColor(r, g, b),
+                notificationBg: `rgba(${Math.max(0, r-20)}, ${Math.max(0, g-20)}, ${Math.max(0, b-20)}, 0.5)`
             });
         };
 
-        const intervalId = setInterval(checkReminders, 60 * 1000); // Check every minute
-
-        return () => clearInterval(intervalId);
-    }, [appointments]);
-
-
-    useEffect(() => {
-        if (highlightedAppointmentId) {
-            const timer = setTimeout(() => setHighlightedAppointmentId(null), 2000);
-            return () => clearTimeout(timer);
-        }
-    }, [highlightedAppointmentId]);
-
-    const handleToggleNotificationPopover = useCallback(() => {
-        setIsNotificationPopoverOpen(prev => !prev);
-    }, []);
-
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            const notificationBell = document.getElementById('notification-bell');
-            if (isNotificationPopoverOpen && notificationBell && !notificationBell.contains(event.target as Node)) {
-                setIsNotificationPopoverOpen(false);
-            }
-        };
-
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [isNotificationPopoverOpen]);
-    
-     const checkAppointmentConflict = useCallback((appointmentData: Omit<Appointment, 'id' | 'status' | 'reminderSent'>, appointmentIdToIgnore: number | null = null): string | null => {
-        const { datetime, endTime } = appointmentData;
-        const now = new Date();
-        if (datetime < now && (!appointmentIdToIgnore || (now.getTime() - datetime.getTime()) > 60000)) {
-            return "Não é possível agendar horários no passado.";
-        }
-
-        const newStartTime = datetime.getTime();
-        const newEndTime = endTime.getTime();
-        const newDateStr = datetime.toDateString();
-
-        for (const slot of blockedSlots) {
-            if (new Date(slot.date).toDateString() !== newDateStr) continue;
-            
-            if (slot.isFullDay) return "Este dia está totalmente bloqueado.";
-
-            if (slot.startTime) {
-                const slotDate = new Date(slot.date);
-                const [startHour, startMinute] = slot.startTime.split(':').map(Number);
-                const slotStartTime = new Date(slotDate.getFullYear(), slotDate.getMonth(), slotDate.getDate(), startHour, startMinute).getTime();
-                
-                const slotEndTime = slot.endTime 
-                    ? new Date(slotDate.getFullYear(), slotDate.getMonth(), slotDate.getDate(), ...slot.endTime.split(':').map(Number)).getTime()
-                    : slotStartTime + 30 * 60 * 1000; // Assume 30 min if no end time
-                
-                if (newStartTime < slotEndTime && newEndTime > slotStartTime) {
-                     return `Conflito com horário bloqueado: ${slot.startTime}${slot.endTime ? ` às ${slot.endTime}`: ''}.`;
-                }
-            }
-        }
-        
-        for (const appt of appointments) {
-            if (appt.id === appointmentIdToIgnore) continue;
-            if (new Date(appt.datetime).toDateString() !== newDateStr) continue;
-
-            const existingStartTime = appt.datetime.getTime();
-            const existingEndTime = appt.endTime 
-                ? appt.endTime.getTime()
-                : existingStartTime + appt.services.reduce((sum, s) => sum + (s.duration || 30), 0) * 60 * 1000;
-
-            if (newStartTime < existingEndTime && newEndTime > existingStartTime) {
-                 return `Conflito com agendamento de ${appt.clientName} às ${appt.datetime.toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}.`;
-            }
-        }
-
-        return null;
-    }, [blockedSlots, appointments]);
-
-    const handleBlockSlot = useCallback(async (data: { date: Date, isFullDay: boolean, startTime?: string, endTime?: string }) => {
-        const newSlotDateStr = data.date.toDateString();
-        const conflict = blockedSlots.some(s => {
-            if (new Date(s.date).toDateString() !== newSlotDateStr) return false;
-            if (s.isFullDay || data.isFullDay) return true;
-            if (data.startTime && s.startTime) {
-                const newStart = data.startTime;
-                const newEnd = data.endTime || newStart;
-                const existingStart = s.startTime;
-                const existingEnd = s.endTime || existingStart;
-                return newStart <= existingEnd && newEnd >= existingStart;
-            }
-            return false;
-        });
-
-        if (conflict) {
-            showModal("Conflito de Horário", "O período selecionado entra em conflito com um bloqueio já existente.");
+        if (!logoUrl) {
+            console.warn('logoUrl is not set, using fallback header style.');
+            setFallbackHeader();
             return;
         }
 
-        const newSlot: BlockedSlot = {
-            ...data,
-            id: nextId.current++,
-        };
-    
-        setBlockedSlots(prev => [...prev, newSlot].sort((a,b) => a.date.getTime() - b.date.getTime()));
-        showModal("Sucesso", "Horário bloqueado com sucesso.");
-    }, [blockedSlots]);
-
-    const handleUnblockSlot = useCallback(async (id: number) => {
-        const slotToUnblock = blockedSlots.find(s => s.id === id);
-        setBlockedSlots(prev => prev.filter(s => s.id !== id));
-        showModal("Sucesso", `O bloqueio para ${slotToUnblock ? new Date(slotToUnblock.date).toLocaleDateString('pt-BR') : ''} foi removido.`);
-    }, [blockedSlots]);
-
-    const handleScheduleAppointment = useCallback(async (newAppointmentData: Omit<Appointment, 'id' | 'status'>): Promise<boolean> => {
-        const conflictMessage = checkAppointmentConflict(newAppointmentData);
-        if (conflictMessage) {
-            showModal("Horário Indisponível", conflictMessage);
-            return false;
-        }
-        
-        const newAppointment: Appointment = {
-            ...newAppointmentData,
-            id: nextId.current++,
-            status: 'scheduled',
-        };
-
-        setAppointments(prev => [...prev, newAppointment].sort((a, b) => a.datetime.getTime() - b.datetime.getTime()));
-        setHighlightedAppointmentId(newAppointment.id);
-        showModal("Sucesso", `Agendamento para ${newAppointment.clientName} marcado com sucesso.`);
-        
-        const sanitizedClientPhone = newAppointment.clientPhone.replace(/\D/g, '');
-        const servicesText = newAppointment.services.map(s => s.name).join(', ');
-        const totalValue = newAppointment.services.reduce((sum, s) => sum + s.value, 0);
-        const clientMessage = `Olá, ${newAppointment.clientName}! ✨\n\nSeu agendamento no salão foi confirmado com sucesso!\n\n*Serviço(s):* ${servicesText}\n*Valor Total:* R$ ${totalValue.toFixed(2)}\n*Data:* ${new Date(newAppointment.datetime).toLocaleDateString('pt-BR')}\n*Hora:* ${new Date(newAppointment.datetime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}\n\nMal podemos esperar para te ver! 🌸`;
-        window.open(`https://wa.me/55${sanitizedClientPhone}?text=${encodeURIComponent(clientMessage)}`, '_blank');
-        return true;
-    }, [checkAppointmentConflict, appointments]);
-
-    const handleCancelAppointment = useCallback(async (appointmentId: number) => {
-        const appointmentToCancel = appointments.find(appt => appt.id === appointmentId);
-        if (appointmentToCancel) {
-            setRemovingAppointmentId(appointmentId);
-            setTimeout(() => {
-                setAppointments(prev => prev.filter(appt => appt.id !== appointmentId));
-                setRemovingAppointmentId(null);
-                showModal("Cancelado", `O agendamento de ${appointmentToCancel.clientName} foi cancelado.`);
-            }, 500);
-        }
-    }, [appointments]);
-
-    const handleStartEdit = useCallback((appointment: Appointment) => {
-        setEditingAppointment(appointment);
-        setActiveView('appointments'); 
-    }, []);
-
-    const handleCancelEdit = useCallback(() => {
-        setEditingAppointment(null);
-    }, []);
-
-    const handleUpdateAppointment = useCallback(async (updatedAppointment: Appointment): Promise<boolean> => {
-        const conflictMessage = checkAppointmentConflict(updatedAppointment, updatedAppointment.id);
-        if (conflictMessage) {
-            showModal("Horário Indisponível", conflictMessage);
-            return false;
-        }
-
-        setAppointments(prev => prev.map(appt => appt.id === updatedAppointment.id ? updatedAppointment : appt).sort((a, b) => a.datetime.getTime() - b.datetime.getTime()));
-        setEditingAppointment(null);
-        setHighlightedAppointmentId(updatedAppointment.id);
-        showModal("Sucesso", "Agendamento atualizado com sucesso!");
-        return true;
-    }, [checkAppointmentConflict, appointments]);
-
-
-    const handleCompleteAppointment = useCallback(async (appointmentId: number) => {
-        const completedAppt = appointments.find(a => a.id === appointmentId);
-        if (completedAppt) {
-            setRemovingAppointmentId(appointmentId);
-            const updatedAppointment = { ...completedAppt, status: 'completed' as 'completed' };
-            
-            setTimeout(() => {
-                 setAppointments(prev => prev.map(a => a.id === appointmentId ? updatedAppointment : a));
-                setRemovingAppointmentId(null);
-                showModal("Finalizado", `O agendamento de ${completedAppt.clientName} foi marcado como finalizado.`);
-            }, 500);
-        }
-    }, [appointments]);
-
-    const sendWhatsAppMessage = (appointment: Appointment) => {
-        const sanitizedClientPhone = appointment.clientPhone.replace(/\D/g, '');
-        const servicesText = appointment.services.map(s => s.name).join(', ');
-        const reminderMessage = `Olá, ${appointment.clientName}! 🌸 Passando para te lembrar do seu horário amanhã!\n\n*Serviço(s):* ${servicesText}\n*Data:* ${new Date(appointment.datetime).toLocaleDateString('pt-BR')}\n*Hora:* ${new Date(appointment.datetime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}\n\nQualquer imprevisto, por favor, nos avise com antecedência. Estamos te esperando! ✨`;
-        window.open(`https://wa.me/55${sanitizedClientPhone}?text=${encodeURIComponent(reminderMessage)}`, '_blank');
-    };
-
-    const handleSendAllReminders = useCallback(() => {
-        if (remindersToSend.length === 0) return;
-
-        const sentIds = new Set<number>();
-        remindersToSend.forEach(appt => {
-            sendWhatsAppMessage(appt);
-            sentIds.add(appt.id);
-        });
-
-        setAppointments(prev =>
-            prev.map(appt =>
-                sentIds.has(appt.id) ? { ...appt, reminderSent: true } : appt
-            )
-        );
-
-        showModal("Sucesso", `${remindersToSend.length} lembrete(s) foram enviados.`);
-        setRemindersToSend([]);
-    }, [remindersToSend, appointments]);
-
-    const handleSendReminder = useCallback(async (appointmentId: number) => {
-        const apptToSendReminder = appointments.find(a => a.id === appointmentId);
-        if (!apptToSendReminder) return;
-
-        sendWhatsAppMessage(apptToSendReminder);
-    
-        const updatedAppointment = { ...apptToSendReminder, reminderSent: true };
-
-        setAppointments(prev => prev.map(appt => appt.id === appointmentId ? updatedAppointment : appt));
-        showModal("Lembrete Enviado", `O lembrete para ${apptToSendReminder.clientName} foi enviado.`);
-    }, [appointments]);
-
-     const handleExportData = useCallback(() => {
-        try {
-            const dataToExport = {
-                appointments: appointments,
-                blockedSlots: blockedSlots,
-            };
-            const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
-                JSON.stringify(dataToExport, null, 2)
-            )}`;
-            const link = document.createElement("a");
-            link.href = jsonString;
-            const date = new Date().toISOString().slice(0, 10);
-            link.download = `backup-spaco-delas-${date}.json`;
-            link.click();
-            showModal("Sucesso", "Backup dos dados exportado com sucesso!");
-        } catch (error) {
-            console.error("Failed to export data", error);
-            showModal("Erro", "Ocorreu um erro ao exportar os dados.");
-        }
-    }, [appointments, blockedSlots]);
-
-    const handleImportData = useCallback((data: any) => {
-        try {
-            if (!data || !Array.isArray(data.appointments) || !Array.isArray(data.blockedSlots)) {
-                throw new Error("Formato de arquivo inválido.");
-            }
-
-            const importedAppointments = data.appointments.map((a: any) => {
-                const appointmentData: any = {
-                    ...a,
-                    id: Number(a.id),
-                };
-    
-                const datetime = new Date(a.datetime);
-                appointmentData.datetime = datetime;
-                let endTime = a.endTime ? new Date(a.endTime) : null;
-
-                if (a.service && typeof a.value !== 'undefined' && !a.services) {
-                    const serviceDef = SERVICES.find(def => def.name === a.service);
-                    appointmentData.services = [{ name: a.service, value: Number(a.value), duration: serviceDef?.duration || 30 }];
-                    delete appointmentData.service;
-                    delete appointmentData.value;
-                } else if (Array.isArray(a.services)) {
-                    appointmentData.services = a.services.map((s: any) => {
-                        if (typeof s.duration !== 'number') {
-                            const serviceDef = SERVICES.find(def => def.name === s.name);
-                            return { ...s, duration: serviceDef?.duration || 30 };
-                        }
-                        return s;
-                    });
-                } else {
-                    appointmentData.services = [];
-                }
-    
-                if (!endTime) {
-                    const totalDuration = appointmentData.services.reduce((sum: number, s: any) => sum + (s.duration || 30), 0);
-                    endTime = new Date(datetime.getTime() + totalDuration * 60 * 1000);
-                }
-                appointmentData.endTime = endTime;
-
-                return appointmentData;
+        getAverageColor(logoUrl)
+            .then(color => {
+                const contrastColor = getContrastColor(color.r, color.g, color.b);
+                const notificationBg = `rgba(${Math.max(0, color.r - 20)}, ${Math.max(0, color.g - 20)}, ${Math.max(0, color.b - 20)}, 0.5)`;
+                setHeaderStyle({
+                    background: generateGradient(color.r, color.g, color.b),
+                    color: contrastColor,
+                    notificationBg: notificationBg,
+                });
+            })
+            .catch(err => {
+                // This is a handled error (e.g., invalid logo URL), so we just apply the fallback.
+                // Logging it as an error can be alarming when the app functions as intended.
+                setFallbackHeader();
             });
+    }, [currentTheme, logoUrl]);
+    
+    // --- DERIVED STATE & MEMOS ---
+    
+    // Calculate client stats
+    const enrichedClients = useMemo((): EnrichedClient[] => {
+        return clients.map(client => {
+            const clientAppointments = appointments.filter(a => a.clientPhone === client.phone);
+            const totalSpent = clientAppointments
+                .filter(a => a.status === 'completed')
+                .reduce((sum, a) => sum + a.services.reduce((s, serv) => s + serv.value, 0), 0);
 
-            const importedBlockedSlots = data.blockedSlots.map((s: any) => ({
-                ...s,
-                id: Number(s.id),
-                date: new Date(s.date),
-            }));
-
-            setAppointments(importedAppointments);
-            setBlockedSlots(importedBlockedSlots);
+            const lastVisit = clientAppointments
+                .filter(a => a.status === 'completed')
+                .sort((a, b) => b.datetime.getTime() - a.datetime.getTime())[0];
             
-            const maxApptId = Math.max(0, ...importedAppointments.map((a: Appointment) => a.id));
-            const maxSlotId = Math.max(0, ...importedBlockedSlots.map((s: BlockedSlot) => s.id));
-            nextId.current = Math.max(Date.now(), maxApptId, maxSlotId) + 1;
-
-            showModal("Sucesso", "Dados importados e restaurados com sucesso!");
-        } catch (error) {
-            console.error("Failed to import data", error);
-            showModal("Erro", `Não foi possível importar os dados. Verifique o arquivo de backup. Detalhe: ${(error as Error).message}`);
-        }
-    }, []);
-
-    const handleRestoreFromBackup = useCallback((backupData: any) => {
-        showModal(
-            "Confirmar Restauração",
-            "Você tem certeza que deseja restaurar este backup? Os dados atuais serão substituídos. Esta ação não pode ser desfeita.",
-            () => {
-                handleImportData(backupData);
-                closeModal();
+            let daysSinceLastVisit: number | null = null;
+            if(lastVisit) {
+                const diffTime = Math.abs(new Date().getTime() - lastVisit.datetime.getTime());
+                daysSinceLastVisit = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             }
-        );
-    }, [handleImportData]);
 
-    const upcomingAppointments = useMemo(() => {
-        return appointments.filter(appt => appt.status === 'scheduled');
+            const cancellationCount = clientAppointments.filter(a => a.status === 'cancelled').length;
+            
+            return { ...client, totalSpent, daysSinceLastVisit, cancellationCount };
+        }).sort((a, b) => b.totalSpent - a.totalSpent);
+    }, [clients, appointments]);
+
+    // Get appointments for notification popover (next 24 hours)
+    const notificationAppointments = useMemo(() => {
+        const now = new Date();
+        const next24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        return appointments
+            .filter(a => a.datetime > now && a.datetime <= next24Hours && a.status === 'scheduled')
+            .sort((a, b) => a.datetime.getTime() - b.datetime.getTime());
     }, [appointments]);
-
-    const projectedRevenue = useMemo(() => {
-        return upcomingAppointments.reduce((total, appt) => total + appt.services.reduce((subtotal, s) => subtotal + s.value, 0), 0);
-    }, [upcomingAppointments]);
-
-    const monthlyRevenue = useMemo(() => {
+    
+     // Calculate revenue
+    const { projectedRevenue, monthlyRevenue } = useMemo(() => {
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
 
-        return appointments.reduce((total, appt) => {
-            const apptDate = new Date(appt.datetime);
-            if (
-                appt.status === 'completed' &&
-                apptDate.getMonth() === currentMonth &&
-                apptDate.getFullYear() === currentYear
-            ) {
-                return total + appt.services.reduce((subtotal, s) => subtotal + s.value, 0);
+        return appointments.reduce((acc, appt) => {
+            const value = appt.services.reduce((sum, s) => sum + s.value, 0);
+            const apptMonth = appt.datetime.getMonth();
+            const apptYear = appt.datetime.getFullYear();
+
+            if (appt.status === 'scheduled' || appt.status === 'confirmed' || appt.status === 'delayed') {
+                acc.projectedRevenue += value;
             }
-            return total;
-        }, 0);
+            if (appt.status === 'completed' && apptMonth === currentMonth && apptYear === currentYear) {
+                acc.monthlyRevenue += value;
+            }
+            return acc;
+        }, { projectedRevenue: 0, monthlyRevenue: 0 });
     }, [appointments]);
 
-    const clients = useMemo(() => {
-        const clientData: { [phone: string]: { name: string; totalSpent: number; lastVisit: Date | null } } = {};
+    // --- HANDLERS ---
+    
+    // Toast and Modal helpers
+    const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+        setToastInfo({ id: Date.now(), message, type });
+        setTimeout(() => setToastInfo(null), 3000);
+    }, []);
 
-        appointments.forEach(appt => {
-            if (!clientData[appt.clientPhone]) {
-                clientData[appt.clientPhone] = { name: appt.clientName, totalSpent: 0, lastVisit: null };
-            }
-            clientData[appt.clientPhone].name = appt.clientName;
+    const showModal = useCallback((title: string, message: string, onConfirm?: () => void) => {
+        setModalInfo({ isOpen: true, title, message, onConfirm });
+    }, []);
 
-            if (appt.status === 'completed') {
-                clientData[appt.clientPhone].totalSpent += appt.services.reduce((subtotal, s) => subtotal + s.value, 0);
-                const apptDate = new Date(appt.datetime);
-                const currentLastVisit = clientData[appt.clientPhone].lastVisit;
-                if (!currentLastVisit || apptDate > currentLastVisit) {
-                    clientData[appt.clientPhone].lastVisit = apptDate;
-                }
-            }
+    const closeModal = useCallback(() => setModalInfo({ isOpen: false, title: '', message: '' }), []);
+    
+    // Auth
+    const handleLogin = useCallback((user: User) => {
+        setCurrentUser(user);
+        sessionStorage.setItem('spaco-delas-currentUser', JSON.stringify(user));
+        showToast(`Bem-vinda, ${user.name}!`, 'success');
+    }, [showToast]);
+
+    const handleLogout = useCallback(() => {
+        showModal('Sair do Sistema', 'Você tem certeza que deseja sair?', () => {
+            setCurrentUser(null);
+            sessionStorage.removeItem('spaco-delas-currentUser');
+            closeModal();
         });
+    }, [showModal, closeModal]);
 
-        const clientList: Client[] = Object.entries(clientData).map(([phone, data]) => {
-            let daysSinceLastVisit: number | null = null;
-            if (data.lastVisit) {
-                const diffTime = Math.abs(new Date().getTime() - data.lastVisit.getTime());
-                daysSinceLastVisit = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            }
-            return { phone, name: data.name, totalSpent: data.totalSpent, daysSinceLastVisit };
+    // Appointment Form
+    const handleOpenForm = (appt: Appointment | null) => {
+        setAppointmentToEdit(appt);
+        setIsFormVisible(true);
+    };
+
+    const handleCloseForm = useCallback(() => {
+        setIsFormVisible(false);
+        setAppointmentToEdit(null);
+    }, []);
+
+    // Client Form
+    const handleOpenClientForm = (client: Client | null) => {
+        setClientToEdit(client);
+        setIsClientFormVisible(true);
+    };
+
+    const handleCloseClientForm = useCallback(() => {
+        setIsClientFormVisible(false);
+        setClientToEdit(null);
+    }, []);
+    
+    // Generate WhatsApp message and open link
+    const openWhatsApp = (appointment: Appointment, messageType: 'new' | 'update' | 'cancel') => {
+        const phone = appointment.clientPhone.replace(/\D/g, '');
+        const services = appointment.services.map(s => s.name).join(', ');
+        const date = appointment.datetime.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' });
+        const time = appointment.datetime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        
+        let message = '';
+        switch(messageType) {
+            case 'new':
+                message = `Olá ${appointment.clientName}! 😊 Seu agendamento para *${services}* foi confirmado para o dia *${date}* às *${time}*. Mal podemos esperar para te ver! ✨`;
+                break;
+            case 'update':
+                message = `Olá ${appointment.clientName}! Informamos que seu agendamento foi alterado. O novo horário para *${services}* é *${date}* às *${time}*. Por favor, confirme se está tudo certo.`;
+                break;
+            case 'cancel':
+                message = `Olá ${appointment.clientName}, confirmando o cancelamento do seu agendamento de *${services}* do dia *${date}* às *${time}*. Se precisar, é só chamar para reagendar.`;
+                break;
+        }
+
+        window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, '_blank');
+    };
+
+    // CRUD Handlers
+    const handleScheduleAppointment = useCallback((newAppointmentData: Omit<Appointment, 'id' | 'status'>) => {
+        const newAppointment: Appointment = {
+            ...newAppointmentData,
+            id: Date.now(),
+            status: 'scheduled',
+        };
+        setAppointments(prev => [...prev, newAppointment].sort((a,b) => a.datetime.getTime() - b.datetime.getTime()));
+        handleCloseForm();
+        showToast('Agendamento criado com sucesso!', 'success');
+        openWhatsApp(newAppointment, 'new');
+    }, [handleCloseForm, showToast, setAppointments]);
+
+    const handleUpdateAppointment = useCallback((updatedAppointment: Appointment) => {
+        setAppointments(prev => prev.map(a => a.id === updatedAppointment.id ? updatedAppointment : a));
+        handleCloseForm();
+        showToast('Agendamento atualizado!', 'success');
+        showModal('Notificar Cliente?', 'Deseja enviar uma mensagem no WhatsApp com as alterações?', () => {
+            const messageType = updatedAppointment.status === 'cancelled' ? 'cancel' : 'update';
+            openWhatsApp(updatedAppointment, messageType);
         });
+    }, [handleCloseForm, showToast, showModal, setAppointments]);
 
-        clientList.sort((a, b) => a.name.localeCompare(b.name));
-        return clientList;
-    }, [appointments]);
+    const handleMarkAsDelayed = useCallback((appointment: Appointment) => {
+        setAppointments(prev => prev.map(a => a.id === appointment.id ? { ...a, status: 'delayed' } : a));
+        showToast(`${appointment.clientName} marcada como atrasada.`, 'success');
+    }, [setAppointments, showToast]);
 
-    const TabButton: React.FC<{ label: string; viewName: 'appointments' | 'clients' }> = ({ label, viewName }) => (
-        <button
-            onClick={() => setActiveView(viewName)}
-            className={`px-6 py-3 text-lg font-bold rounded-t-lg transition-colors duration-300 focus:outline-none border-b-4 ${
-                activeView === viewName
-                    ? 'border-pink-500 text-pink-600'
-                    : 'border-transparent text-purple-400 hover:border-pink-300 hover:text-pink-500'
-            }`}
-            style={{ fontFamily: "'Lato', sans-serif" }}
-        >
-            {label}
-        </button>
-    );
+    const handleSaveClient = useCallback((clientData: Omit<Client, 'id'> | Client) => {
+        if ('id' in clientData) { // Editing existing client
+            setClients(prev => prev.map(c => c.id === clientData.id ? clientData : c));
+            showToast('Cliente atualizada com sucesso!', 'success');
+        } else { // Adding new client
+            const newClient: Client = { ...clientData, id: Date.now() };
+            setClients(prev => [...prev, newClient]);
+            showToast('Cliente adicionada com sucesso!', 'success');
+        }
+        handleCloseClientForm();
+    }, [handleCloseClientForm, showToast, setClients]);
+    
+    // Fix: Create a handler for updating a single service to pass to ServicesView.
+    // This resolves the type mismatch where setServices (expecting Service[]) was
+    // passed to a prop expecting a function that takes a single Service.
+    const handleUpdateService = useCallback((updatedService: Service) => {
+        setServices(prevServices =>
+            prevServices.map(service =>
+                service.name === updatedService.name ? updatedService : service
+            )
+        );
+        showToast('Serviço atualizado com sucesso!', 'success');
+    }, [setServices, showToast]);
 
-    const panelClasses = "bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-pink-100";
+    // Settings Handlers
+    const handleExportData = useCallback(() => {
+        try {
+            const dataToExport = {
+                appointments,
+                clients,
+                blockedSlots,
+                services,
+                monthlyPackage,
+                logoUrl,
+                currentTheme,
+            };
+            const dataStr = JSON.stringify(dataToExport, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `spaco_delas_backup_${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            showToast('Backup exportado com sucesso!', 'success');
+        } catch (e) {
+            console.error(e);
+            showModal('Erro de Exportação', 'Não foi possível gerar o arquivo de backup.');
+        }
+    }, [appointments, clients, blockedSlots, services, monthlyPackage, logoUrl, currentTheme, showToast, showModal]);
 
+    const handleImportData = useCallback((data: any) => {
+        try {
+            // Add basic validation
+            if (data && Array.isArray(data.appointments) && Array.isArray(data.clients)) {
+                setAppointments(data.appointments || []);
+                setClients(data.clients || []);
+                setBlockedSlots(data.blockedSlots || []);
+                setServices(data.services || SERVICES);
+                setMonthlyPackage(data.monthlyPackage || { serviceName: 'Pé+Mão', price: 180 });
+                setLogoUrl(data.logoUrl || '/logo.png');
+                setCurrentTheme(data.currentTheme || 'pink');
+                showToast('Dados restaurados com sucesso!', 'success');
+            } else {
+                 throw new Error("Formato de arquivo inválido.");
+            }
+        } catch(e: any) {
+             showModal('Erro de Importação', `Falha ao restaurar dados. Detalhe: ${e.message}`);
+        }
+    }, [setAppointments, setClients, setBlockedSlots, setServices, setMonthlyPackage, setLogoUrl, setCurrentTheme, showToast, showModal]);
+    
+
+    // --- RENDER LOGIC ---
+
+    const renderActiveView = () => {
+        switch (activeView) {
+            case 'agenda':
+                return (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <div className="lg:col-span-2 space-y-6">
+                            <div className="flex justify-between items-center">
+                                <h2 className="text-3xl font-bold text-[var(--text-dark)]">Agenda do Dia</h2>
+                                <button
+                                    onClick={() => handleOpenForm(null)}
+                                    className="flex items-center px-6 py-3 bg-[var(--primary)] text-white font-bold rounded-lg shadow-md hover:bg-[var(--primary-hover)] transition-transform transform hover:scale-105 active:scale-95"
+                                >
+                                    <PlusIcon />
+                                    Novo Agendamento
+                                </button>
+                            </div>
+                            <CalendarView appointments={appointments} blockedSlots={blockedSlots} onEditAppointment={handleOpenForm} />
+                        </div>
+                        <div className="lg:col-span-1">
+                            <RevenueDashboard projectedRevenue={projectedRevenue} monthlyRevenue={monthlyRevenue} />
+                        </div>
+                    </div>
+                );
+            case 'calendar':
+                return <CalendarView appointments={appointments} blockedSlots={blockedSlots} onEditAppointment={handleOpenForm} />;
+            case 'clients':
+                return <ClientList clients={enrichedClients} onAddClient={() => handleOpenClientForm(null)} onEditClient={client => handleOpenClientForm(client)} />;
+            case 'services':
+                return <ServicesView services={services} onUpdateService={handleUpdateService} monthlyPackage={monthlyPackage} onUpdatePackage={setMonthlyPackage} />;
+            case 'settings':
+                return (
+                    <div className="max-w-4xl mx-auto space-y-8">
+                        <h2 className="text-4xl font-bold text-[var(--text-dark)] text-center">Configurações</h2>
+                        <ThemeSwitcher currentTheme={currentTheme} onThemeChange={setCurrentTheme} />
+                        <LogoUploader currentLogo={logoUrl} onLogoChange={(url) => setLogoUrl(url || '/logo.png')} onError={showModal} />
+                        <CollapsibleSection title="Backup e Restauração">
+                            <BackupRestore onExport={handleExportData} onImport={handleImportData} onError={showModal} />
+                        </CollapsibleSection>
+                         <CollapsibleSection title="Gerenciar Usuários">
+                            <UserManagement showToast={showToast} showModal={showModal} />
+                        </CollapsibleSection>
+                        <CollapsibleSection title="Notificações Push">
+                            <NotificationManager />
+                        </CollapsibleSection>
+                    </div>
+                );
+        }
+    };
+    
+    // Login Screen Guard
+    if (!currentUser) {
+        return <LoginScreen onLogin={handleLogin} showToast={showToast} />;
+    }
+
+    // Main App Layout
     return (
-        <div className="min-h-screen p-4 sm:p-6 md:p-8">
-            <div className="max-w-7xl mx-auto relative">
+        <div ref={appContainerRef} className="bg-[var(--background)] min-h-screen text-[var(--text-body)] transition-colors duration-500">
+            <div className={`p-4 sm:p-6 transition-all duration-500 ${headerStyle ? '' : 'bg-[var(--primary)]'}`}>
                 <Header 
+                    logoUrl={logoUrl} 
+                    headerStyle={headerStyle}
                     notificationAppointments={notificationAppointments}
                     isNotificationPopoverOpen={isNotificationPopoverOpen}
-                    onToggleNotificationPopover={handleToggleNotificationPopover}
+                    onToggleNotificationPopover={() => setIsNotificationPopoverOpen(prev => !prev)}
+                    currentUser={currentUser}
+                    onLogout={handleLogout}
                 />
-                 <ReminderBanner 
-                    reminders={remindersToSend}
-                    onSend={handleSendAllReminders}
-                    onClose={() => setRemindersToSend([])}
-                />
-                
-                <div className="mt-8 flex justify-center border-b-2 border-pink-200">
-                    <TabButton label="Agendamentos" viewName="appointments" />
-                    <TabButton label="Clientes" viewName="clients" />
-                </div>
-
-                <main className="mt-2">
-                    {activeView === 'appointments' && (
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-6">
-                            <div className={panelClasses}>
-                                <AppointmentForm 
-                                    onSchedule={handleScheduleAppointment}
-                                    appointmentToEdit={editingAppointment}
-                                    onUpdate={handleUpdateAppointment}
-                                    onCancelEdit={handleCancelEdit}
-                                />
-                            </div>
-                            <div className={panelClasses}>
-                                <AppointmentList 
-                                    appointments={upcomingAppointments} 
-                                    onCancel={handleCancelAppointment}
-                                    onComplete={handleCompleteAppointment}
-                                    onEdit={handleStartEdit}
-                                    onSendReminder={handleSendReminder}
-                                    highlightedAppointmentId={highlightedAppointmentId}
-                                    removingAppointmentId={removingAppointmentId}
-                                />
-                            </div>
-                            <div className={panelClasses}>
-                                <RevenueDashboard
-                                    projectedRevenue={projectedRevenue}
-                                    monthlyRevenue={monthlyRevenue}
-                                />
-                                 <AgendaManagement
-                                    blockedSlots={blockedSlots}
-                                    onBlockSlot={handleBlockSlot}
-                                    onUnblockSlot={handleUnblockSlot}
-                                    appointments={appointments}
-                                />
-                                <BackupRestore
-                                    onExport={handleExportData}
-                                    onImport={handleImportData}
-                                    onRestore={handleRestoreFromBackup}
-                                />
-                            </div>
-                        </div>
-                    )}
-                     {activeView === 'clients' && (
-                        <div className={`${panelClasses} mt-6`}>
-                            <ClientList clients={clients} />
-                        </div>
-                    )}
-                </main>
             </div>
-            <Modal
-                isOpen={modalInfo.isOpen}
-                title={modalInfo.title}
-                message={modalInfo.message}
-                onClose={closeModal}
-                onConfirm={modalInfo.onConfirm}
-            />
+
+            {/* Navigation */}
+            <nav className="flex justify-center bg-white/50 backdrop-blur-sm shadow-md sticky top-0 z-30">
+                {([
+                    { label: 'Agenda', view: 'agenda' }, 
+                    { label: 'Calendário', view: 'calendar' }, 
+                    { label: 'Clientes', view: 'clients' }, 
+                    { label: 'Serviços', view: 'services' }, 
+                    { label: 'Configurações', view: 'settings' }
+                ] as const).map(item => (
+                    <button 
+                        key={item.view}
+                        onClick={() => setActiveView(item.view)}
+                        className={`px-3 sm:px-6 py-4 text-sm sm:text-base font-bold transition-all border-b-4 ${
+                            activeView === item.view 
+                                ? 'text-[var(--primary)] border-[var(--primary)]' 
+                                : 'text-[var(--text-body)] border-transparent hover:bg-[var(--highlight)]'
+                        }`}
+                    >
+                        {item.label}
+                    </button>
+                ))}
+            </nav>
+            
+            <main className="p-4 sm:p-8">
+                {renderActiveView()}
+            </main>
+
+            {/* Modals and Forms as Overlays */}
+            {(isFormVisible || isClientFormVisible) && <div className="fixed inset-0 bg-black bg-opacity-50 z-40 animate-backdrop-in" onClick={isFormVisible ? handleCloseForm : handleCloseClientForm}></div>}
+            
+            <div className={`form-container ${isFormVisible ? 'visible' : ''}`}>
+                 {isFormVisible && 
+                    <AppointmentForm 
+                        onSchedule={handleScheduleAppointment} 
+                        appointmentToEdit={appointmentToEdit}
+                        onUpdate={handleUpdateAppointment}
+                        onCancelEdit={handleCloseForm}
+                        appointments={appointments}
+                        blockedSlots={blockedSlots}
+                        onMarkAsDelayed={handleMarkAsDelayed}
+                        services={services}
+                    />
+                }
+            </div>
+
+            <div className={`form-container ${isClientFormVisible ? 'visible' : ''}`}>
+                 {isClientFormVisible && 
+                    <ClientForm
+                        onSave={handleSaveClient}
+                        clientToEdit={clientToEdit}
+                        onCancel={handleCloseClientForm}
+                        existingClients={clients}
+                    />
+                }
+            </div>
+
+            <Modal {...modalInfo} onClose={() => setModalInfo({ ...modalInfo, isOpen: false })} />
+            
+            {toastInfo && (
+                <div key={toastInfo.id} className="toast-container">
+                    <Toast message={toastInfo.message} type={toastInfo.type} />
+                </div>
+            )}
         </div>
     );
 };

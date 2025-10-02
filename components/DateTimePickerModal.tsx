@@ -5,7 +5,7 @@ import { BlockedSlot, Appointment } from '../types';
 interface DateTimePickerModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onConfirm: (data: { date: Date, isFullDay: boolean, startTime?: string, endTime?: string }) => void;
+    onConfirm: (data: { date: Date, isFullDay?: boolean, startTime?: string, endTime?: string }) => void;
     initialDate?: Date | null;
     blockedSlots?: BlockedSlot[];
     showBlockDayToggle?: boolean;
@@ -16,12 +16,10 @@ interface DateTimePickerModalProps {
 
 const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClose, onConfirm, initialDate, blockedSlots = [], showBlockDayToggle = false, appointments = [], editingAppointmentId = null, totalDuration = 30 }) => {
     const [viewDate, setViewDate] = useState(initialDate || new Date());
-    const [selectedDay, setSelectedDay] = useState<Date | null>(initialDate || null);
-    
+    const [selectedDay, setSelectedDay] = useState<Date | null>(initialDate || new Date());
     const [selectedTime, setSelectedTime] = useState<string | null>(null);
     const [selectedStartTime, setSelectedStartTime] = useState<string | null>(null);
     const [selectedEndTime, setSelectedEndTime] = useState<string | null>(null);
-
     const [blockFullDay, setBlockFullDay] = useState(false);
 
     useEffect(() => {
@@ -29,7 +27,7 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
             const initial = initialDate || new Date();
             const initialHour = initialDate ? `${String(initialDate.getHours()).padStart(2, '0')}:${String(initialDate.getMinutes()).padStart(2, '0')}` : null;
             setViewDate(initial);
-            setSelectedDay(initialDate || null);
+            setSelectedDay(initialDate || new Date());
             setBlockFullDay(false);
             if (showBlockDayToggle) {
                 setSelectedStartTime(initialHour);
@@ -63,14 +61,14 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
             const isSelected = selectedDay?.toDateString() === fullDate.toDateString();
             const isBlocked = blockedSlots.some(slot => slot.isFullDay && new Date(slot.date).toDateString() === fullDate.toDateString());
             
-            const baseClasses = "w-10 h-10 flex items-center justify-center rounded-full transition-colors";
-            let dayClasses = isPast || isBlocked ? `${baseClasses} text-gray-400 cursor-not-allowed` : `${baseClasses} cursor-pointer hover:bg-pink-200`;
+            const baseClasses = "w-10 h-10 flex items-center justify-center rounded-full transition-all";
+            let dayClasses = isPast || isBlocked ? `${baseClasses} text-gray-400 cursor-not-allowed` : `${baseClasses} cursor-pointer hover:bg-[var(--border)] active:scale-95`;
             
             if (isBlocked) {
                 dayClasses += ' bg-rose-200 line-through';
             }
             if (isSelected) {
-                dayClasses = `${baseClasses} bg-pink-500 text-white font-bold`;
+                dayClasses = `${baseClasses} bg-[var(--primary)] text-white font-bold`;
             }
 
             grid.push(
@@ -92,15 +90,11 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
             return;
         }
 
-        let finalDate = new Date(selectedDay);
-        let finalIsFullDay = blockFullDay;
-        let finalStartTime: string | undefined = undefined;
-        let finalEndTime: string | undefined = undefined;
-
         if (showBlockDayToggle) { // Blocking logic
-            if (!finalIsFullDay) {
+            let finalStartTime: string | undefined = undefined;
+            if (!blockFullDay) {
                 if (!selectedStartTime) {
-                    alert("Por favor, selecione um horário de início.");
+                    alert("Por favor, selecione um horário de início para o bloqueio.");
                     return;
                 }
                 if (selectedStartTime && selectedEndTime && selectedEndTime <= selectedStartTime) {
@@ -108,108 +102,108 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
                     return;
                 }
                 finalStartTime = selectedStartTime;
-                finalEndTime = selectedEndTime || undefined;
             }
+             onConfirm({ date: selectedDay, isFullDay: blockFullDay, startTime: finalStartTime, endTime: selectedEndTime || undefined });
         } else { // Scheduling logic
             if (!selectedTime) {
                 alert("Por favor, selecione um horário.");
                 return;
             }
-            finalStartTime = selectedTime;
-            finalIsFullDay = false;
+             const [hour, minute] = selectedTime.split(':').map(Number);
+             const finalDate = new Date(selectedDay);
+             finalDate.setHours(hour, minute, 0, 0);
+             onConfirm({ date: finalDate });
         }
-        
-        if (finalStartTime) {
-            const [hour, minute] = finalStartTime.split(':').map(Number);
-            finalDate.setHours(hour, minute, 0, 0);
-        }
-        
-        onConfirm({ date: finalDate, isFullDay: finalIsFullDay, startTime: finalStartTime, endTime: finalEndTime });
     };
-
-    const filteredEndTimes = useMemo(() => {
-        if (!selectedStartTime) return TIMES;
-        return TIMES.filter(t => t > selectedStartTime);
-    }, [selectedStartTime]);
-
-
-    const timeIsAvailable = useMemo(() => {
-        if (!selectedDay) return () => false;
+    
+    const suggestedTimes = useMemo(() => {
+        if (!selectedDay) return [];
 
         const dayStr = selectedDay.toDateString();
-        const unavailableSlots = new Set<string>();
+        const busySlots = new Set<string>();
 
+        // Mark busy slots from blocked periods
         blockedSlots.forEach(slot => {
             if (new Date(slot.date).toDateString() !== dayStr) return;
             if (slot.isFullDay) {
-                TIMES.forEach(time => unavailableSlots.add(time));
+                TIMES.forEach(time => busySlots.add(time));
                 return;
             }
             if (slot.startTime) {
                 const start = slot.startTime;
-                const end = slot.endTime || start;
+                const end = slot.endTime || TIMES[TIMES.indexOf(start) + 1] || start;
                 TIMES.forEach(time => {
                     if (time >= start && time < end) {
-                        unavailableSlots.add(time);
-                    } else if (!slot.endTime && time === start) {
-                        unavailableSlots.add(time);
+                        busySlots.add(time);
                     }
                 });
             }
         });
 
+        // Mark busy slots from appointments
         appointments.forEach(appt => {
-            if (appt.id === editingAppointmentId || new Date(appt.datetime).toDateString() !== dayStr) return;
+            if (appt.id === editingAppointmentId) return;
+            if (new Date(appt.datetime).toDateString() !== dayStr) return;
 
-            const apptDuration = appt.services.reduce((sum, s) => sum + (s.duration || 30), 0);
-            const slotsToBook = Math.ceil(apptDuration / 30);
-            const startTime = `${String(appt.datetime.getHours()).padStart(2, '0')}:${String(appt.datetime.getMinutes()).padStart(2, '0')}`;
-            const startIndex = TIMES.indexOf(startTime);
+            const startTime = appt.datetime.getTime();
+            const endTime = appt.endTime.getTime();
 
-            if (startIndex > -1) {
-                for (let i = 0; i < slotsToBook; i++) {
-                    if (startIndex + i < TIMES.length) {
-                        unavailableSlots.add(TIMES[startIndex + i]);
-                    }
+            TIMES.forEach(timeStr => {
+                const [h, m] = timeStr.split(':').map(Number);
+                const checkTime = new Date(selectedDay).setHours(h, m, 0, 0);
+                if (checkTime >= startTime && checkTime < endTime) {
+                    busySlots.add(timeStr);
                 }
-            }
+            });
         });
 
-        return (startTime: string): boolean => {
-            const slotsNeeded = Math.ceil((totalDuration || 30) / 30);
-            const startIndex = TIMES.indexOf(startTime);
-            if (startIndex === -1) return false;
+        const availableStartTimes: string[] = [];
+        const slotsNeeded = Math.ceil((totalDuration || 30) / 30);
+        
+        const today = new Date();
+        const isTodaySelected = selectedDay.toDateString() === today.toDateString();
 
-            for (let i = 0; i < slotsNeeded; i++) {
-                const timeToCheckIndex = startIndex + i;
-                if (timeToCheckIndex >= TIMES.length || unavailableSlots.has(TIMES[timeToCheckIndex])) {
-                    return false;
+        for (let i = 0; i <= TIMES.length - slotsNeeded; i++) {
+            const startTimeCandidate = TIMES[i];
+
+            if (isTodaySelected) {
+                const [h, m] = startTimeCandidate.split(':').map(Number);
+                const candidateDate = new Date();
+                candidateDate.setHours(h, m, 0, 0);
+                if (candidateDate < today) continue;
+            }
+
+            let isSequenceAvailable = true;
+            for (let j = 0; j < slotsNeeded; j++) {
+                if (busySlots.has(TIMES[i + j])) {
+                    isSequenceAvailable = false;
+                    break;
                 }
             }
-            return true;
-        };
-    }, [selectedDay, blockedSlots, appointments, totalDuration, editingAppointmentId]);
 
+            if (isSequenceAvailable) {
+                availableStartTimes.push(startTimeCandidate);
+            }
+        }
+
+        return availableStartTimes;
+    }, [selectedDay, blockedSlots, appointments, totalDuration, editingAppointmentId]);
 
     if (!isOpen) return null;
 
-    const today = new Date();
-    const isTodaySelected = selectedDay?.toDateString() === today.toDateString();
-
-    const selectClasses = "w-full h-11 px-3 py-2 bg-pink-50 border border-pink-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-pink-400";
-
+    const selectClasses = "w-full h-11 px-3 py-2 bg-[var(--highlight)] border border-[var(--border)] rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)]";
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
-            <div className="bg-white rounded-2xl shadow-2xl p-6 m-4 max-w-lg w-full transform transition-transform" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-backdrop-in" onClick={onClose}>
+            <div className="bg-[var(--surface-opaque)] rounded-2xl shadow-2xl p-6 m-4 max-w-lg w-full animate-modal-in" onClick={e => e.stopPropagation()}>
                 <div className="mb-4">
                     <div className="flex items-center justify-between mb-2">
-                        <button onClick={() => handleMonthChange(-1)} className="p-2 rounded-full hover:bg-pink-100 transition">&lt;</button>
-                        <h4 className="text-lg font-bold text-purple-800">{`${MONTHS[viewDate.getMonth()]} ${viewDate.getFullYear()}`}</h4>
-                        <button onClick={() => handleMonthChange(1)} className="p-2 rounded-full hover:bg-pink-100 transition">&gt;</button>
+                        <button onClick={() => handleMonthChange(-1)} className="p-2 rounded-full hover:bg-[var(--highlight)] transition active:scale-95">&lt;</button>
+                        <h4 className="text-lg font-bold text-[var(--text-dark)]">{`${MONTHS[viewDate.getMonth()]} ${viewDate.getFullYear()}`}</h4>
+                        <button onClick={() => handleMonthChange(1)} className="p-2 rounded-full hover:bg-[var(--highlight)] transition active:scale-95">&gt;</button>
                     </div>
-                    <div className="grid grid-cols-7 gap-1 text-center text-sm text-pink-800 mb-2">
-                        {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map(d => <div key={d}>{d}</div>)}
+                    <div className="grid grid-cols-7 gap-1 text-center text-sm text-[var(--primary)] font-bold mb-2">
+                        {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => <div key={i}>{d}</div>)}
                     </div>
                     <div className="grid grid-cols-7 gap-1 text-center">
                         {calendarGrid}
@@ -223,20 +217,20 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
                             id="fullDayBlock"
                             checked={blockFullDay}
                             onChange={(e) => setBlockFullDay(e.target.checked)}
-                            className="h-4 w-4 text-pink-600 border-gray-300 rounded focus:ring-pink-500"
+                            className="h-4 w-4 text-[var(--primary)] border-gray-300 rounded focus:ring-[var(--primary-hover)]"
                         />
-                        <label htmlFor="fullDayBlock" className="ml-2 text-md text-purple-800">
+                        <label htmlFor="fullDayBlock" className="ml-2 text-md text-[var(--text-dark)]">
                             Bloquear o dia inteiro
                         </label>
                     </div>
                 )}
                 
                 {showBlockDayToggle && !blockFullDay && (
-                    <div className="border-t border-pink-200 pt-4">
-                        <h4 className="text-lg font-bold text-purple-800 mb-2 text-center">Selecione o Período</h4>
+                    <div className="border-t border-[var(--border)] pt-4">
+                        <h4 className="text-lg font-bold text-[var(--text-dark)] mb-2 text-center">Selecione o Período</h4>
                         <div className="flex flex-col sm:flex-row gap-4">
                              <div className="flex-1">
-                                <label htmlFor="start-time" className="block text-sm font-medium text-purple-800 mb-1">Início</label>
+                                <label htmlFor="start-time" className="block text-sm font-medium text-[var(--text-dark)] mb-1">Início</label>
                                 <select 
                                     id="start-time" 
                                     value={selectedStartTime || ''} 
@@ -249,14 +243,11 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
                                     className={selectClasses}
                                 >
                                     <option value="">--:--</option>
-                                    {TIMES.map(time => {
-                                        const isAvailable = timeIsAvailable(time);
-                                        return <option key={time} value={time} disabled={!isAvailable}>{time}</option>;
-                                    })}
+                                    {TIMES.map(time => <option key={time} value={time}>{time}</option>)}
                                 </select>
                             </div>
                              <div className="flex-1">
-                                <label htmlFor="end-time" className="block text-sm font-medium text-purple-800 mb-1">Fim (opcional)</label>
+                                <label htmlFor="end-time" className="block text-sm font-medium text-[var(--text-dark)] mb-1">Fim (opcional)</label>
                                 <select 
                                     id="end-time" 
                                     value={selectedEndTime || ''} 
@@ -265,10 +256,7 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
                                     disabled={!selectedStartTime}
                                 >
                                     <option value="">--:--</option>
-                                    {filteredEndTimes.map(time => {
-                                        const isAvailable = timeIsAvailable(time);
-                                        return <option key={time} value={time} disabled={!isAvailable}>{time}</option>;
-                                    })}
+                                    {TIMES.filter(t => !selectedStartTime || t > selectedStartTime).map(time => <option key={time} value={time}>{time}</option>)}
                                 </select>
                             </div>
                         </div>
@@ -276,43 +264,38 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
                 )}
 
                 {!showBlockDayToggle && (
-                    <div className="border-t border-pink-200 pt-4">
-                        <h4 className="text-lg font-bold text-purple-800 mb-2 text-center">Selecione o Horário</h4>
-                        <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 max-h-40 overflow-y-auto">
-                            {TIMES.map(time => {
-                                const [hour, minute] = time.split(':').map(Number);
-                                const isPast = isTodaySelected && (hour < today.getHours() || (hour === today.getHours() && minute < today.getMinutes()));
-                                const isSelected = time === selectedTime;
+                    <div className="border-t border-[var(--border)] pt-4">
+                        <h4 className="text-lg font-bold text-[var(--text-dark)] mb-2 text-center">
+                            Horários Disponíveis ({totalDuration} min)
+                        </h4>
+                        <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 max-h-40 overflow-y-auto p-1">
+                           {suggestedTimes.length > 0 ? (
+                                suggestedTimes.map(time => {
+                                    const isSelected = time === selectedTime;
+                                    const timeClasses = `p-2 rounded-lg text-center transition-all cursor-pointer hover:bg-[var(--border)] active:scale-95 ${
+                                        isSelected ? 'bg-[var(--primary)] text-white font-bold' : 'bg-[var(--highlight)]'
+                                    }`;
 
-                                const isAvailable = timeIsAvailable(time);
-                                const isDisabled = isPast || !isAvailable;
-                                
-                                const baseClasses = "p-2 rounded-lg text-center transition-colors";
-                                let timeClasses = `${baseClasses} `;
-
-                                if (isSelected) {
-                                    timeClasses += 'bg-pink-500 text-white font-bold';
-                                } else if (isDisabled) {
-                                    timeClasses += 'bg-gray-200 text-gray-400 cursor-not-allowed';
-                                } else {
-                                    timeClasses += 'bg-pink-100 cursor-pointer hover:bg-pink-200';
-                                }
-
-                                return (
-                                    <div key={time} className={timeClasses} onClick={() => !isDisabled && setSelectedTime(time)}>
-                                        {time}
-                                    </div>
-                                );
-                            })}
+                                    return (
+                                        <div key={time} className={timeClasses} onClick={() => setSelectedTime(time)}>
+                                            {time}
+                                        </div>
+                                    );
+                                })
+                            ) : (
+                                <p className="col-span-full text-center text-[var(--secondary)] italic py-4">
+                                    Nenhum horário disponível para a duração selecionada neste dia.
+                                </p>
+                            )}
                         </div>
                     </div>
                 )}
 
                 <div className="flex justify-end gap-4 mt-6">
-                    <button onClick={onClose} className="px-6 py-2 bg-gray-300 text-gray-800 font-bold rounded-lg shadow-md hover:bg-gray-400 transition">
+                    <button onClick={onClose} className="px-6 py-2 bg-gray-300 text-gray-800 font-bold rounded-lg shadow-md hover:bg-gray-400 transition-all active:scale-95">
                         Cancelar
                     </button>
-                    <button onClick={handleConfirm} className="px-6 py-2 bg-pink-500 text-white font-bold rounded-lg shadow-md hover:bg-pink-600 transition">
+                    <button onClick={handleConfirm} className="px-6 py-2 bg-[var(--primary)] text-white font-bold rounded-lg shadow-md hover:bg-[var(--primary-hover)] transition-all active:scale-95">
                         Confirmar
                     </button>
                 </div>
