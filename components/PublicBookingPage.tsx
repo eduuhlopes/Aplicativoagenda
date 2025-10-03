@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Appointment, Professional, Service, BlockedSlot } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Appointment, Professional, Service, BlockedSlot, StoredProfessional } from '../types';
 import { SERVICES, TIMES, MONTHS } from '../constants';
 
 // Minimalist hook for using localStorage, adapted for public page
@@ -44,7 +44,7 @@ const PublicBookingPage: React.FC = () => {
     const [logoUrl, setLogoUrl] = useState('/logo.png');
 
     // Data from LocalStorage
-    const [professionalsData] = usePersistentState<Record<string, Omit<Professional, 'username'>>>("spaco-delas-users", {});
+    const [professionalsData] = usePersistentState<Record<string, StoredProfessional>>("spaco-delas-users", {});
     const [services] = usePersistentState<Service[]>("spaco-delas-services", SERVICES);
     const [appointments] = usePersistentState<Appointment[]>("spaco-delas-appointments", []);
     const [blockedSlots] = usePersistentState<BlockedSlot[]>("spaco-delas-blockedSlots", []);
@@ -60,7 +60,12 @@ const PublicBookingPage: React.FC = () => {
     }, []);
 
     const professionalsList = useMemo((): Professional[] => 
-        Object.entries(professionalsData).map(([username, data]) => ({ username, ...data })), 
+        Object.entries(professionalsData).map(([username, data]) => ({ 
+            username,
+            name: data.name,
+            role: data.role || 'professional',
+            assignedServices: data.assignedServices || []
+        })), 
     [professionalsData]);
 
     const clientHistory = useMemo(() => {
@@ -69,8 +74,22 @@ const PublicBookingPage: React.FC = () => {
             .filter(a => a.clientPhone.replace(/\D/g, '') === clientPhone.replace(/\D/g, ''))
             .sort((a,b) => b.datetime.getTime() - a.datetime.getTime());
     }, [isPhoneSubmitted, clientPhone, appointments]);
+
+    const formatPhone = (value: string): string => {
+        let digits = value.replace(/\D/g, '');
+        if (digits.length > 11) digits = digits.slice(0, 11);
+        const len = digits.length;
+        if (len > 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+        if (len > 6) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+        if (len > 2) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+        return digits;
+    };
     
     // --- Step Logic ---
+    const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setClientPhone(formatPhone(e.target.value));
+    };
+    
     const handlePhoneSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const existingClient = appointments.find(a => a.clientPhone.replace(/\D/g, '') === clientPhone.replace(/\D/g, ''));
@@ -125,13 +144,6 @@ const PublicBookingPage: React.FC = () => {
         setAppointmentRequests(prev => [...prev, newRequest]);
         setStep(6); // Success step
     };
-
-    const resetFlow = () => {
-        setStep(2);
-        setSelectedProfessional(null);
-        setSelectedServices([]);
-        setSelectedDateTime(null);
-    }
     
     // --- Render Methods ---
     
@@ -151,7 +163,7 @@ const PublicBookingPage: React.FC = () => {
                 <input
                     type="tel"
                     value={clientPhone}
-                    onChange={e => setClientPhone(e.target.value.replace(/\D/g, '').replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3'))}
+                    onChange={handlePhoneChange}
                     placeholder="(XX) XXXXX-XXXX"
                     className="w-full h-12 px-4 text-lg text-center bg-[var(--highlight)] border-2 border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                     maxLength={15}
@@ -187,7 +199,7 @@ const PublicBookingPage: React.FC = () => {
         <div className="animate-view-in">
             <h2 className="text-2xl font-bold text-center text-[var(--text-dark)] mb-4">Selecione os serviços</h2>
             <div className="space-y-3 max-h-80 overflow-y-auto p-2 -m-2">
-                {availableServices.map(service => {
+                {availableServices.length > 0 ? availableServices.map(service => {
                     const isSelected = selectedServices.some(s => s.name === service.name);
                     return (
                         <div key={service.name} onClick={() => handleServiceToggle(service)} className={`flex justify-between items-center p-4 rounded-lg cursor-pointer transition-all border-2 ${isSelected ? 'bg-green-50 border-[var(--success)]' : 'bg-white border-[var(--border)] hover:border-[var(--accent)]'}`}>
@@ -198,7 +210,9 @@ const PublicBookingPage: React.FC = () => {
                             <p className="font-semibold text-lg text-[var(--success)]">{service.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
                         </div>
                     );
-                })}
+                }) : (
+                    <p className="text-center italic text-[var(--secondary)] py-4">Nenhum serviço disponível para esta profissional.</p>
+                )}
             </div>
              <button onClick={() => setStep(4)} disabled={selectedServices.length === 0} className="mt-6 w-full py-3 btn-primary-gradient text-white font-bold rounded-lg shadow-md hover:scale-105 transition-transform active:scale-95 disabled:opacity-50 disabled:grayscale">
                 Escolher Horário
@@ -212,6 +226,34 @@ const PublicBookingPage: React.FC = () => {
         const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
         const totalDuration = useMemo(() => selectedServices.reduce((sum, s) => sum + s.duration, 0), [selectedServices]);
+
+        const calendarGrid = useMemo(() => {
+            const year = viewDate.getFullYear();
+            const month = viewDate.getMonth();
+            const firstDayOfMonth = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+            // FIX: Use `React.ReactElement` to explicitly reference the type from the imported React module, resolving the "Cannot find namespace 'JSX'" error.
+            const grid: React.ReactElement[] = [];
+            for (let i = 0; i < firstDayOfMonth; i++) {
+                grid.push(<div key={`empty-${i}`} className="w-10 h-10"></div>);
+            }
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const fullDate = new Date(year, month, day);
+                const isPast = fullDate < new Date(new Date().toDateString());
+                const isSelected = selectedDay?.toDateString() === fullDate.toDateString();
+                const isBlocked = blockedSlots.some(s => s.isFullDay && new Date(s.date).toDateString() === fullDate.toDateString());
+
+                grid.push(
+                     <div key={day} onClick={() => !(isPast || isBlocked) && setSelectedDay(fullDate)}
+                        className={`w-10 h-10 flex items-center justify-center rounded-full transition-all text-sm ${isPast || isBlocked ? 'text-gray-400 cursor-not-allowed line-through' : 'cursor-pointer hover:bg-[var(--border)]'} ${isSelected ? 'bg-[var(--primary)] text-white font-bold' : ''}`}>
+                        {day}
+                    </div>
+                );
+            }
+            return grid;
+        }, [viewDate, selectedDay, blockedSlots]);
 
         const suggestedTimes = useMemo(() => {
             if (!selectedDay || !selectedProfessional) return [];
@@ -274,7 +316,7 @@ const PublicBookingPage: React.FC = () => {
                 if (isSequenceAvailable) availableStartTimes.push(startTimeCandidate);
             }
             return availableStartTimes;
-        }, [selectedDay, selectedProfessional, totalDuration]);
+        }, [selectedDay, selectedProfessional, totalDuration, appointments, blockedSlots]);
 
         return (
             <div>
@@ -283,38 +325,31 @@ const PublicBookingPage: React.FC = () => {
                     <h4 className="font-bold">{`${MONTHS[viewDate.getMonth()]} ${viewDate.getFullYear()}`}</h4>
                     <button onClick={() => setViewDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))} className="p-2 rounded-full hover:bg-[var(--highlight)]">&gt;</button>
                 </div>
-                {/* Simplified Calendar Grid */}
-                 <div className="grid grid-cols-7 gap-1 text-center mb-4">
-                    {Array.from({ length: new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate() }).map((_, dayIndex) => {
-                        const day = dayIndex + 1;
-                        const fullDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), day);
-                        const isPast = fullDate < new Date(new Date().toDateString());
-                        const isSelected = selectedDay?.toDateString() === fullDate.toDateString();
-                        const isBlocked = blockedSlots.some(s => s.isFullDay && new Date(s.date).toDateString() === fullDate.toDateString());
-
-                        return (
-                             <div key={day} onClick={() => !(isPast || isBlocked) && setSelectedDay(fullDate)}
-                                className={`w-10 h-10 flex items-center justify-center rounded-full transition-all ${isPast || isBlocked ? 'text-gray-400 cursor-not-allowed' : 'cursor-pointer hover:bg-[var(--border)]'} ${isSelected ? 'bg-[var(--primary)] text-white font-bold' : ''}`}>
-                                {day}
-                            </div>
-                        )
-                    })}
+                <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold text-[var(--secondary)] mb-2">
+                    {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d,i) => <div key={i}>{d}</div>)}
+                </div>
+                <div className="grid grid-cols-7 gap-1 text-center mb-4 place-items-center">
+                    {calendarGrid}
                 </div>
                 {/* Time Slots */}
                 {selectedDay && (
                      <div className="border-t border-[var(--border)] pt-4">
                         <h4 className="font-bold text-center mb-2">Horários para {selectedDay.toLocaleDateString('pt-BR', {day: '2-digit', month: 'long'})}</h4>
                         <div className="grid grid-cols-4 gap-2 max-h-40 overflow-y-auto">
-                            {suggestedTimes.map(time => {
-                                const [h,m] = time.split(':').map(Number);
-                                const finalDate = new Date(selectedDay);
-                                finalDate.setHours(h,m);
-                                return (
-                                    <button key={time} onClick={() => handleDateTimeConfirm(finalDate)} className="p-2 rounded-lg bg-[var(--highlight)] hover:bg-[var(--accent)] transition">
-                                        {time}
-                                    </button>
-                                );
-                            })}
+                            {suggestedTimes.length > 0 ? (
+                                suggestedTimes.map(time => {
+                                    const [h,m] = time.split(':').map(Number);
+                                    const finalDate = new Date(selectedDay);
+                                    finalDate.setHours(h,m);
+                                    return (
+                                        <button key={time} onClick={() => handleDateTimeConfirm(finalDate)} className="p-2 rounded-lg bg-[var(--highlight)] hover:bg-[var(--accent)] transition">
+                                            {time}
+                                        </button>
+                                    );
+                                })
+                            ) : (
+                                <p className="col-span-full text-center text-[var(--secondary)] italic py-4">Nenhum horário disponível para a duração selecionada.</p>
+                            )}
                         </div>
                     </div>
                 )}
@@ -324,7 +359,11 @@ const PublicBookingPage: React.FC = () => {
 
     const renderStep4_DateTime = () => (
          <div className="animate-view-in">
-            <h2 className="text-2xl font-bold text-center text-[var(--text-dark)] mb-4">Escolha a data e hora</h2>
+            <h2 className="text-2xl font-bold text-center text-[var(--text-dark)] mb-1">Escolha a data e hora</h2>
+             <div className="text-center text-sm text-[var(--text-body)] mb-4 p-2 bg-[var(--highlight)] rounded-lg border border-dashed border-[var(--border)]">
+                <p><strong>Profissional:</strong> {selectedProfessional?.name}</p>
+                <p><strong>Serviços:</strong> {selectedServices.map(s => s.name).join(', ')}</p>
+            </div>
             <TimePicker />
         </div>
     );
@@ -380,7 +419,6 @@ const PublicBookingPage: React.FC = () => {
             )}
         </div>
     );
-
 
     return (
         <div className="bg-[var(--background)] min-h-screen font-sans">
