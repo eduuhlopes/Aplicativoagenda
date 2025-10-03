@@ -4,6 +4,7 @@ export const themes = [
     { name: 'pink', label: 'Rosa Pastel', color: '#C77D93' },
     { name: 'blue', label: 'Azul Sereno', color: '#A7C7E7' },
     { name: 'green', label: 'Verde Menta', color: '#98D7C2' },
+    { name: 'dark', label: 'Modo Escuro', color: '#1a1a2e' },
 ];
 
 interface ThemeSwitcherProps {

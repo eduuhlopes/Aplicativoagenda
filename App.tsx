@@ -84,7 +84,7 @@ const App: React.FC = () => {
     
     // Global/UI State
     const [logoUrl, setLogoUrl] = usePersistentState<string>('spaco-delas-global-logo', '/logo.png');
-    const [currentTheme, setCurrentTheme] = usePersistentState<string>('spaco-delas-global-theme', 'pink');
+    const [currentTheme, setCurrentTheme] = usePersistentState<string>('app-theme', 'pink');
     const [activeView, setActiveView] = useState<'agenda' | 'clients' | 'financeiro' | 'services' | 'settings'>('agenda');
     const [newlyAddedAppointmentId, setNewlyAddedAppointmentId] = useState<number | null>(null);
     const [viewingClientHistory, setViewingClientHistory] = useState<Client | null>(null);
@@ -166,7 +166,11 @@ const App: React.FC = () => {
             username,
             name: data.name,
             role: data.role || 'professional',
-            assignedServices: data.assignedServices || []
+            assignedServices: data.assignedServices || [],
+            bio: data.bio || '',
+            avatarUrl: data.avatarUrl || '',
+            color: data.color || '#C77D93',
+            workSchedule: data.workSchedule || {},
         }));
     }, [professionals]);
 
@@ -206,6 +210,9 @@ const App: React.FC = () => {
      // Calculate comprehensive financial data
     const financialData = useMemo((): FinancialData => {
         const monthlyRevenue: { [key: string]: number } = {};
+        const revenueByService: { [serviceName: string]: number } = {};
+        const revenueByProfessional: { [professionalName: string]: number } = {};
+
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
@@ -218,13 +225,19 @@ const App: React.FC = () => {
             const apptDate = appt.datetime;
             const value = appt.services.reduce((sum, s) => sum + s.value, 0);
 
-            // Completed appointments contribute to historical monthly revenue
+            // Completed appointments contribute to historical monthly revenue and detailed breakdowns
             if (appt.status === 'completed') {
                 const monthKey = `${apptDate.getFullYear()}-${String(apptDate.getMonth()).padStart(2, '0')}`;
                 monthlyRevenue[monthKey] = (monthlyRevenue[monthKey] || 0) + value;
                 if (apptDate.getFullYear() === currentYear) {
                     totalAnnualRevenue += value;
                 }
+                // Breakdown calculations
+                appt.services.forEach(service => {
+                    revenueByService[service.name] = (revenueByService[service.name] || 0) + service.value;
+                });
+                const professionalName = professionals[appt.professionalUsername]?.name || appt.professionalUsername;
+                revenueByProfessional[professionalName] = (revenueByProfessional[professionalName] || 0) + value;
             }
 
             // Scheduled/Confirmed/Delayed appointments in the current month contribute to projection
@@ -250,8 +263,10 @@ const App: React.FC = () => {
             projectedRevenueCurrentMonth,
             averageMonthlyRevenue,
             totalAnnualRevenue,
+            revenueByService,
+            revenueByProfessional,
         };
-    }, [appointments]);
+    }, [appointments, professionals]);
 
     // --- HANDLERS ---
     
@@ -576,7 +591,7 @@ const App: React.FC = () => {
             </div>
 
             {/* Navigation */}
-            <nav className="flex justify-center bg-white/50 backdrop-blur-sm shadow-md sticky top-0 z-30">
+            <nav className="flex justify-center bg-[var(--surface-opaque)]/80 backdrop-blur-sm shadow-md sticky top-0 z-30 border-b border-[var(--border)]">
                 {([
                     { label: 'Agenda', view: 'agenda' },
                     { label: 'Clientes', view: 'clients' }, 

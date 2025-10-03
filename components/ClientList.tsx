@@ -164,8 +164,11 @@ interface ClientListProps {
     onClearHistoryView: () => void;
 }
 
+type SortOption = 'spent' | 'recent' | 'inactive';
+
 const ClientList: React.FC<ClientListProps> = ({ clients, appointments, onAddClient, onEditClient, viewingHistoryFor, onClearHistoryView }) => {
     const [searchTerm, setSearchTerm] = useState('');
+    const [sortOption, setSortOption] = useState<SortOption>('spent');
 
     if (viewingHistoryFor) {
         const clientData = clients.find(c => c.id === viewingHistoryFor.id);
@@ -194,14 +197,29 @@ const ClientList: React.FC<ClientListProps> = ({ clients, appointments, onAddCli
         );
     }
 
-    const filteredClients = useMemo(() => {
-        if (!searchTerm) {
-            return clients;
+    const sortedAndFilteredClients = useMemo(() => {
+        let processedClients = [...clients];
+
+        if (searchTerm) {
+            processedClients = processedClients.filter(client =>
+                client.name.toLowerCase().includes(searchTerm.toLowerCase())
+            );
         }
-        return clients.filter(client =>
-            client.name.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-    }, [clients, searchTerm]);
+
+        switch (sortOption) {
+            case 'spent':
+                processedClients.sort((a, b) => b.totalSpent - a.totalSpent);
+                break;
+            case 'recent':
+                processedClients.sort((a, b) => (a.daysSinceLastVisit ?? Infinity) - (b.daysSinceLastVisit ?? Infinity));
+                break;
+            case 'inactive':
+                 processedClients.sort((a, b) => (b.daysSinceLastVisit ?? -1) - (a.daysSinceLastVisit ?? -1));
+                break;
+        }
+
+        return processedClients;
+    }, [clients, searchTerm, sortOption]);
 
     return (
         <div className="flex flex-col h-full">
@@ -210,8 +228,8 @@ const ClientList: React.FC<ClientListProps> = ({ clients, appointments, onAddCli
                  <UserGroupIcon />
             </h2>
             
-            <div className="mb-6 flex items-center gap-4">
-                 <div className="relative flex-grow">
+            <div className="mb-6 flex flex-col sm:flex-row items-center gap-4">
+                 <div className="relative flex-grow w-full">
                     <input
                         type="text"
                         placeholder="Buscar cliente por nome..."
@@ -224,13 +242,24 @@ const ClientList: React.FC<ClientListProps> = ({ clients, appointments, onAddCli
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                 </div>
-                <button 
-                    onClick={onAddClient} 
-                    className="flex-shrink-0 px-4 h-12 bg-[var(--primary)] text-white font-bold rounded-lg shadow-md hover:bg-[var(--primary-hover)] transition-transform transform hover:scale-105 active:scale-95"
-                    aria-label="Adicionar nova cliente"
-                >
-                   + Adicionar
-                </button>
+                <div className="flex gap-2 w-full sm:w-auto">
+                    <select
+                        value={sortOption}
+                        onChange={(e) => setSortOption(e.target.value as SortOption)}
+                        className="h-12 px-3 py-2 bg-white border-2 border-[var(--border)] rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] flex-grow"
+                    >
+                        <option value="spent">Mais Gastam</option>
+                        <option value="recent">Mais Recentes</option>
+                        <option value="inactive">Inativas</option>
+                    </select>
+                    <button 
+                        onClick={onAddClient} 
+                        className="flex-shrink-0 px-4 h-12 bg-[var(--primary)] text-white font-bold rounded-lg shadow-md hover:bg-[var(--primary-hover)] transition-transform transform hover:scale-105 active:scale-95"
+                        aria-label="Adicionar nova cliente"
+                    >
+                       + Adicionar
+                    </button>
+                </div>
             </div>
 
             <div className="flex-grow overflow-y-auto pr-2 -mr-2 space-y-4">
@@ -238,13 +267,13 @@ const ClientList: React.FC<ClientListProps> = ({ clients, appointments, onAddCli
                     <div className="flex items-center justify-center h-full py-10">
                         <p className="text-[var(--secondary)] text-center italic">Nenhuma cliente registrada. Clique em "+ Adicionar" para começar.</p>
                     </div>
-                ) : filteredClients.length === 0 ? (
+                ) : sortedAndFilteredClients.length === 0 ? (
                     <div className="flex items-center justify-center h-full py-10">
                         <p className="text-[var(--secondary)] text-center italic">Nenhuma cliente encontrada com o nome "{searchTerm}".</p>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {filteredClients.map(client => (
+                        {sortedAndFilteredClients.map(client => (
                             <ClientItem key={client.id} client={client} onEdit={onEditClient} />
                         ))}
                     </div>

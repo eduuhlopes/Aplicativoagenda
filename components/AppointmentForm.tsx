@@ -512,6 +512,8 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                 totalDuration={totalDuration}
                 editingAppointmentId={appointmentToEdit?.id ?? null}
                 initialDate={selectedDateTime}
+                professionals={professionals}
+                professionalUsername={professionalUsername}
             />
         </form>
     );

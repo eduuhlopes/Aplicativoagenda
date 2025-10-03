@@ -31,6 +31,13 @@ const usePersistentState = <T,>(key: string, defaultValue: T): [T, React.Dispatc
     return [state, setState];
 };
 
+const UserIcon: React.FC<{className?: string}> = ({className}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-16 w-16 text-gray-300"} viewBox="0 0 20 20" fill="currentColor">
+      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0012 11z" clipRule="evenodd" />
+    </svg>
+);
+
+
 const PublicBookingPage: React.FC = () => {
     // Component State
     const [step, setStep] = useState(1);
@@ -55,7 +62,7 @@ const PublicBookingPage: React.FC = () => {
         const storedLogo = localStorage.getItem('spaco-delas-global-logo');
         if (storedLogo) setLogoUrl(JSON.parse(storedLogo));
         // Apply theme
-        const theme = localStorage.getItem('spaco-delas-global-theme') || 'pink';
+        const theme = localStorage.getItem('app-theme') || 'pink';
         document.documentElement.setAttribute('data-theme', theme);
     }, []);
 
@@ -64,7 +71,10 @@ const PublicBookingPage: React.FC = () => {
             username,
             name: data.name,
             role: data.role || 'professional',
-            assignedServices: data.assignedServices || []
+            assignedServices: data.assignedServices || [],
+            bio: data.bio || `Especialista em ${data.assignedServices?.[0] || 'beleza e bem-estar'}.`,
+            avatarUrl: data.avatarUrl,
+            workSchedule: data.workSchedule || {},
         })), 
     [professionalsData]);
 
@@ -179,10 +189,20 @@ const PublicBookingPage: React.FC = () => {
     const renderStep2_Professional = () => (
          <div className="animate-view-in">
             <h2 className="text-2xl font-bold text-center text-[var(--text-dark)] mb-4">Escolha uma profissional</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {professionalsList.map(prof => (
-                    <button key={prof.username} onClick={() => handleSelectProfessional(prof)} className="p-4 bg-white border border-[var(--border)] rounded-lg shadow-sm text-center hover:border-[var(--primary)] hover:shadow-md transition-all">
-                        <p className="font-bold text-lg text-[var(--text-dark)]">{prof.name}</p>
+            <div className="space-y-4">
+                {professionalsList.filter(p => p.role !== 'admin').map(prof => (
+                    <button key={prof.username} onClick={() => handleSelectProfessional(prof)} className="w-full flex items-center gap-4 p-4 bg-white border border-[var(--border)] rounded-lg shadow-sm text-left hover:border-[var(--primary)] hover:shadow-md transition-all">
+                        {prof.avatarUrl ? (
+                            <img src={prof.avatarUrl} alt={prof.name} className="h-16 w-16 rounded-full object-cover flex-shrink-0" />
+                        ) : (
+                             <div className="h-16 w-16 rounded-full flex-shrink-0 bg-gray-100 flex items-center justify-center">
+                                <UserIcon />
+                            </div>
+                        )}
+                        <div>
+                            <p className="font-bold text-lg text-[var(--text-dark)]">{prof.name}</p>
+                            <p className="text-sm text-[var(--text-body)]">{prof.bio}</p>
+                        </div>
                     </button>
                 ))}
             </div>
@@ -191,9 +211,13 @@ const PublicBookingPage: React.FC = () => {
     
      const availableServices = useMemo(() => {
         if (!selectedProfessional) return [];
-        if (selectedProfessional.role === 'admin') return services;
-        return services.filter(s => selectedProfessional.assignedServices.includes(s.name));
-    }, [selectedProfessional, services]);
+        const professional = professionalsList.find(p => p.username === selectedProfessional.username);
+        if (!professional) return [];
+        // A professional with an empty assignedServices array can still be booked if they have a 'professional' role.
+        // It's the admin's responsibility to assign services. If none are assigned, the list will be empty, which is correct.
+        if (professional.role === 'admin') return services;
+        return services.filter(s => professional.assignedServices.includes(s.name));
+    }, [selectedProfessional, services, professionalsList]);
 
     const renderStep3_Services = () => (
         <div className="animate-view-in">
@@ -244,20 +268,30 @@ const PublicBookingPage: React.FC = () => {
                 const isPast = fullDate < new Date(new Date().toDateString());
                 const isSelected = selectedDay?.toDateString() === fullDate.toDateString();
                 const isBlocked = blockedSlots.some(s => s.isFullDay && new Date(s.date).toDateString() === fullDate.toDateString());
+                
+                const dayOfWeek = fullDate.getDay() as (0 | 1 | 2 | 3 | 4 | 5 | 6);
+                const isDayOff = selectedProfessional?.workSchedule?.[dayOfWeek] === null;
 
                 grid.push(
-                     <div key={day} onClick={() => !(isPast || isBlocked) && setSelectedDay(fullDate)}
-                        className={`w-10 h-10 flex items-center justify-center rounded-full transition-all text-sm ${isPast || isBlocked ? 'text-gray-400 cursor-not-allowed line-through' : 'cursor-pointer hover:bg-[var(--border)]'} ${isSelected ? 'bg-[var(--primary)] text-white font-bold' : ''}`}>
+                     <div key={day} onClick={() => !(isPast || isBlocked || isDayOff) && setSelectedDay(fullDate)}
+                        className={`w-10 h-10 flex items-center justify-center rounded-full transition-all text-sm ${isPast || isBlocked || isDayOff ? 'text-gray-400 cursor-not-allowed line-through' : 'cursor-pointer hover:bg-[var(--border)]'} ${isSelected ? 'bg-[var(--primary)] text-white font-bold' : ''}`}>
                         {day}
                     </div>
                 );
             }
             return grid;
-        }, [viewDate, selectedDay, blockedSlots]);
+        }, [viewDate, selectedDay, blockedSlots, selectedProfessional]);
 
         const suggestedTimes = useMemo(() => {
             if (!selectedDay || !selectedProfessional) return [];
             
+            const dayOfWeek = selectedDay.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+            const workDay = selectedProfessional?.workSchedule?.[dayOfWeek];
+            if (!workDay) return []; // Day off
+    
+            const workStartTime = workDay.start;
+            const workEndTime = workDay.end;
+
             const dayStr = selectedDay.toDateString();
             const busySlots = new Set<string>();
 
@@ -298,6 +332,11 @@ const PublicBookingPage: React.FC = () => {
 
             for (let i = 0; i <= TIMES.length - slotsNeeded; i++) {
                 const startTimeCandidate = TIMES[i];
+                const endTimeCandidate = TIMES[i + slotsNeeded - 1];
+                
+                if (startTimeCandidate < workStartTime || endTimeCandidate >= workEndTime) {
+                    continue;
+                }
 
                 if (isTodaySelected) {
                     const [h, m] = startTimeCandidate.split(':').map(Number);

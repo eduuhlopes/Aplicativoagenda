@@ -14,6 +14,44 @@ const ChartBarIcon = () => (
     </svg>
 );
 
+const BreakdownChart: React.FC<{data: {[key: string]: number}, title: string, colorClass: string}> = ({ data, title, colorClass }) => {
+    const sortedData = Object.entries(data).sort(([, a], [, b]) => b - a).slice(0, 10); // Top 10
+    const maxValue = sortedData.length > 0 ? Math.max(...sortedData.map(([, value]) => value)) : 0;
+    
+    if (sortedData.length === 0) {
+        return (
+            <div className="bg-white p-6 rounded-xl shadow-lg border border-[var(--border)]">
+                 <h3 className="text-2xl font-bold text-[var(--text-dark)] mb-4">{title}</h3>
+                 <p className="text-center text-[var(--secondary)] italic py-8">Nenhum dado de faturamento finalizado para exibir.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="bg-white p-6 rounded-xl shadow-lg border border-[var(--border)]">
+            <h3 className="text-2xl font-bold text-[var(--text-dark)] mb-4">{title}</h3>
+            <div className="space-y-3">
+                {sortedData.map(([name, value]) => (
+                    <div key={name} className="flex items-center gap-4">
+                        <div className="w-1/3 text-sm font-semibold text-[var(--text-body)] truncate" title={name}>{name}</div>
+                        <div className="w-2/3 flex items-center gap-2">
+                            <div className="flex-grow bg-[var(--highlight)] rounded-full h-4">
+                                <div
+                                    className={`${colorClass} h-4 rounded-full transition-all duration-500 ease-out`}
+                                    style={{ width: `${(value / maxValue) * 100}%` }}
+                                />
+                            </div>
+                            <div className="font-bold text-sm text-[var(--success)] w-24 text-right">
+                                {value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 const FinancialsView: React.FC<FinancialsViewProps> = ({ financialData }) => {
     return (
         <div className="space-y-8">
@@ -49,6 +87,12 @@ const FinancialsView: React.FC<FinancialsViewProps> = ({ financialData }) => {
             {/* Comparative Chart Section */}
             <div>
                 <RevenueChart monthlyRevenueData={financialData.monthlyRevenue} />
+            </div>
+
+            {/* Breakdown Charts Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <BreakdownChart data={financialData.revenueByService} title="Faturamento por Serviço" colorClass="bg-[var(--primary)]" />
+                <BreakdownChart data={financialData.revenueByProfessional} title="Faturamento por Profissional" colorClass="bg-[var(--secondary)]" />
             </div>
         </div>
     );

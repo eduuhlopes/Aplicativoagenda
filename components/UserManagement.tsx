@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 // FIX: Imported StoredProfessional type and removed unused Professional type.
-import { Service, StoredProfessional } from '../types';
+import { Service, StoredProfessional, WorkSchedule, WorkDay } from '../types';
+import { TIMES } from '../constants';
 
 interface ProfessionalManagementProps {
     showToast: (message: string, type?: 'success' | 'error') => void;
@@ -24,6 +25,90 @@ const EditIcon = () => (
     </svg>
 );
 
+const ClockIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.414-1.415L11 9.586V6z" clipRule="evenodd" />
+    </svg>
+);
+
+// --- Schedule Modal Component ---
+const ScheduleModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    schedule: WorkSchedule;
+    onSave: (newSchedule: WorkSchedule) => void;
+    professionalName: string;
+}> = ({ isOpen, onClose, schedule, onSave, professionalName }) => {
+    const [currentSchedule, setCurrentSchedule] = useState<WorkSchedule>(schedule);
+    
+    useEffect(() => {
+        setCurrentSchedule(schedule);
+    }, [schedule, isOpen]);
+
+    if (!isOpen) return null;
+
+    const weekDays = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+    const handleDayToggle = (dayIndex: number) => {
+        const day = dayIndex as keyof WorkSchedule;
+        setCurrentSchedule(prev => ({
+            ...prev,
+            [day]: prev[day] ? null : { start: '09:00', end: '18:00' } // Default hours
+        }));
+    };
+
+    const handleTimeChange = (dayIndex: number, type: 'start' | 'end', value: string) => {
+        const day = dayIndex as keyof WorkSchedule;
+        setCurrentSchedule(prev => ({
+            ...prev,
+            [day]: { ...(prev[day] as WorkDay), [type]: value }
+        }));
+    };
+
+    const handleSaveClick = () => {
+        onSave(currentSchedule);
+        onClose();
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-70 animate-backdrop-in" onClick={onClose}>
+            <div className="bg-[var(--surface-opaque)] rounded-2xl shadow-2xl p-6 m-4 max-w-lg w-full animate-modal-in" onClick={e => e.stopPropagation()}>
+                <h3 className="text-2xl font-bold text-[var(--text-dark)] mb-4">Horários de {professionalName}</h3>
+                <div className="space-y-3">
+                    {weekDays.map((dayName, index) => {
+                        const day = index as keyof WorkSchedule;
+                        const daySchedule = currentSchedule[day];
+                        const isDayOff = !daySchedule;
+                        return (
+                            <div key={day} className={`p-3 rounded-lg flex items-center justify-between transition-colors ${isDayOff ? 'bg-gray-100 dark:bg-gray-700' : 'bg-green-50 dark:bg-green-900/50'}`}>
+                                <div className="flex items-center gap-3">
+                                    <input type="checkbox" checked={!isDayOff} onChange={() => handleDayToggle(index)} className="h-5 w-5 rounded text-[var(--primary)] focus:ring-[var(--primary-hover)]"/>
+                                    <span className={`font-semibold ${isDayOff ? 'text-gray-500' : 'text-[var(--text-dark)]'}`}>{dayName}</span>
+                                </div>
+                                {!isDayOff && (
+                                    <div className="flex items-center gap-2 text-sm">
+                                        <select value={daySchedule.start} onChange={e => handleTimeChange(index, 'start', e.target.value)} className="h-8 px-2 bg-white border border-[var(--border)] rounded-md">
+                                            {TIMES.slice(0, -1).map(t => <option key={t} value={t}>{t}</option>)}
+                                        </select>
+                                        <span>até</span>
+                                        <select value={daySchedule.end} onChange={e => handleTimeChange(index, 'end', e.target.value)} className="h-8 px-2 bg-white border border-[var(--border)] rounded-md">
+                                            {TIMES.filter(t => t > daySchedule.start).map(t => <option key={t} value={t}>{t}</option>)}
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+                 <div className="flex justify-end gap-3 mt-6">
+                    <button onClick={onClose} className="px-6 py-2 bg-gray-300 text-gray-800 font-bold rounded-lg shadow-md hover:bg-gray-400">Cancelar</button>
+                    <button onClick={handleSaveClick} className="px-6 py-2 bg-[var(--primary)] text-white font-bold rounded-lg shadow-md hover:bg-[var(--primary-hover)]">Salvar Horários</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, showModal, services, professionals, onUsersChange }) => {
     const [editingUsername, setEditingUsername] = useState<string | null>(null);
@@ -34,7 +119,13 @@ const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, show
     const [formPassword, setFormPassword] = useState('');
     const [formRole, setFormRole] = useState<'admin' | 'professional'>('professional');
     const [formAssignedServices, setFormAssignedServices] = useState<string[]>([]);
+    const [formBio, setFormBio] = useState('');
+    const [formAvatarUrl, setFormAvatarUrl] = useState('');
+    const [formColor, setFormColor] = useState('#C77D93');
+    const [formWorkSchedule, setFormWorkSchedule] = useState<WorkSchedule>({});
+    
     const [userToDelete, setUserToDelete] = useState<string | null>(null);
+    const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
 
     const resetForm = () => {
         setFormUsername('');
@@ -42,6 +133,10 @@ const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, show
         setFormPassword('');
         setFormRole('professional');
         setFormAssignedServices([]);
+        setFormBio('');
+        setFormAvatarUrl('');
+        setFormColor('#C77D93');
+        setFormWorkSchedule({ 1: {start: "09:00", end: "18:00"}, 2: {start: "09:00", end: "18:00"}, 3: {start: "09:00", end: "18:00"}, 4: {start: "09:00", end: "18:00"}, 5: {start: "09:00", end: "18:00"}, 6: {start: "09:00", end: "14:00"}, 0: null });
     };
     
     const cancelEdit = () => {
@@ -55,9 +150,12 @@ const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, show
             setFormUsername(editingUsername);
             setFormDisplayName(userToEdit.name);
             setFormPassword(''); // Clear password field for security/simplicity
-            // FIX: Added a fallback for role, as it can be optional in the StoredProfessional type.
             setFormRole(userToEdit.role || 'professional');
             setFormAssignedServices(userToEdit.assignedServices || []);
+            setFormBio(userToEdit.bio || '');
+            setFormAvatarUrl(userToEdit.avatarUrl || '');
+            setFormColor(userToEdit.color || '#C77D93');
+            setFormWorkSchedule(userToEdit.workSchedule || {});
         } else {
             resetForm();
         }
@@ -74,10 +172,14 @@ const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, show
             }
             const updatedUsers = { ...professionals };
             updatedUsers[editingUsername] = {
-                ...updatedUsers[editingUsername], // Preserve original password if not changed
+                ...updatedUsers[editingUsername], // Preserve original data
                 name: formDisplayName.trim(),
                 role: formRole,
                 assignedServices: formAssignedServices,
+                bio: formBio.trim(),
+                avatarUrl: formAvatarUrl.trim(),
+                color: formColor,
+                workSchedule: formWorkSchedule,
             };
             // Only update password if a new one is typed
             if (formPassword.trim()) {
@@ -92,7 +194,7 @@ const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, show
             // --- ADD LOGIC ---
             const username = formUsername.trim().toLowerCase();
             if (!username || !formDisplayName.trim() || !formPassword.trim()) {
-                showToast("Todos os campos de texto são obrigatórios.", 'error');
+                showToast("Usuário, Nome e Senha são obrigatórios.", 'error');
                 return;
             }
             if (professionals[username]) {
@@ -110,7 +212,11 @@ const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, show
                     name: formDisplayName.trim(),
                     password: formPassword.trim(),
                     role: formRole,
-                    assignedServices: formAssignedServices
+                    assignedServices: formAssignedServices,
+                    bio: formBio.trim(),
+                    avatarUrl: formAvatarUrl.trim(),
+                    color: formColor,
+                    workSchedule: formWorkSchedule,
                 }
             };
             onUsersChange(updatedUsers);
@@ -156,51 +262,52 @@ const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, show
                     {editingUsername ? `Editando @${editingUsername}` : 'Adicionar Nova Profissional'}
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium text-[var(--text-dark)] mb-1">Nome de Usuário (login):</label>
-                        <input type="text" value={formUsername} onChange={(e) => setFormUsername(e.target.value)} placeholder="ex: joana" className={inputClasses} disabled={!!editingUsername} />
-                    </div>
-                     <div>
-                        <label className="block text-sm font-medium text-[var(--text-dark)] mb-1">Nome de Exibição:</label>
-                        <input type="text" value={formDisplayName} onChange={(e) => setFormDisplayName(e.target.value)} placeholder="ex: Joana Silva" className={inputClasses} />
-                    </div>
-                     <div>
-                        <label className="block text-sm font-medium text-[var(--text-dark)] mb-1">Senha:</label>
-                        <input type="password" value={formPassword} onChange={(e) => setFormPassword(e.target.value)} placeholder={editingUsername ? "Deixe em branco para não alterar" : "••••••••"} className={inputClasses} />
-                    </div>
-                     <div>
-                        <label className="block text-sm font-medium text-[var(--text-dark)] mb-1">Função:</label>
-                        <select value={formRole} onChange={(e) => setFormRole(e.target.value as any)} className={inputClasses} disabled={editingUsername === 'admin'}>
-                            <option value="professional">Profissional</option>
-                            <option value="admin">Admin</option>
-                        </select>
-                    </div>
+                    <input type="text" value={formUsername} onChange={(e) => setFormUsername(e.target.value)} placeholder="Nome de Usuário (login)" className={inputClasses} disabled={!!editingUsername} />
+                    <input type="text" value={formDisplayName} onChange={(e) => setFormDisplayName(e.target.value)} placeholder="Nome de Exibição" className={inputClasses} />
+                    <input type="password" value={formPassword} onChange={(e) => setFormPassword(e.target.value)} placeholder={editingUsername ? "Nova senha (opcional)" : "Senha"} className={inputClasses} />
+                    <select value={formRole} onChange={(e) => setFormRole(e.target.value as any)} className={inputClasses} disabled={editingUsername === 'admin'}>
+                        <option value="professional">Profissional</option>
+                        <option value="admin">Admin</option>
+                    </select>
                 </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-[var(--text-dark)] mb-2">Serviços que realiza:</label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 bg-white rounded-lg border border-[var(--border)] max-h-32 overflow-y-auto">
-                        {services.map(service => (
-                            <label key={service.name} className="flex items-center space-x-2 text-sm">
-                                <input
-                                    type="checkbox"
-                                    checked={formAssignedServices.includes(service.name)}
-                                    onChange={() => handleServiceToggle(service.name)}
-                                    className="h-4 w-4 rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary-hover)]"
-                                />
-                                <span>{service.name}</span>
-                            </label>
-                        ))}
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <input type="text" value={formBio} onChange={e => setFormBio(e.target.value)} placeholder="Bio (ex: Manicure especialista...)" className={inputClasses} />
+                    <input type="text" value={formAvatarUrl} onChange={e => setFormAvatarUrl(e.target.value)} placeholder="URL da foto (opcional)" className={inputClasses} />
+                </div>
+                
+                <div className="flex items-center gap-4">
+                    <div className="flex-grow">
+                        <label className="block text-sm font-medium text-[var(--text-dark)] mb-2">Serviços que realiza:</label>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 bg-white rounded-lg border border-[var(--border)] max-h-32 overflow-y-auto">
+                            {services.map(service => (
+                                <label key={service.name} className="flex items-center space-x-2 text-sm">
+                                    <input
+                                        type="checkbox"
+                                        checked={formAssignedServices.includes(service.name)}
+                                        onChange={() => handleServiceToggle(service.name)}
+                                        className="h-4 w-4 rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary-hover)]"
+                                    />
+                                    <span>{service.name}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="text-center">
+                        <label className="block text-sm font-medium text-[var(--text-dark)] mb-2">Cor da Agenda</label>
+                        <input type="color" value={formColor} onChange={e => setFormColor(e.target.value)} className="w-16 h-10 p-1 bg-white border border-[var(--border)] rounded-lg cursor-pointer"/>
                     </div>
                 </div>
                 
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-col sm:flex-row">
+                    <button type="button" onClick={() => setIsScheduleModalOpen(true)} className="w-full py-2 px-4 bg-white border border-[var(--border)] text-[var(--text-dark)] font-bold rounded-lg shadow-sm hover:bg-gray-50 flex items-center justify-center gap-2">
+                        <ClockIcon /> Definir Horários
+                    </button>
                     {editingUsername && (
-                        <button type="button" onClick={cancelEdit} className="w-full py-2 px-4 bg-gray-400 text-white font-bold rounded-lg shadow-md hover:bg-gray-500 transition-transform transform hover:scale-105 active:scale-95">
+                        <button type="button" onClick={cancelEdit} className="w-full py-2 px-4 bg-gray-400 text-white font-bold rounded-lg shadow-md hover:bg-gray-500">
                             Cancelar Edição
                         </button>
                     )}
-                    <button type="submit" className="w-full py-2 px-4 bg-[var(--primary)] text-white font-bold rounded-lg shadow-md hover:bg-[var(--primary-hover)] transition-transform transform hover:scale-105 active:scale-95">
+                    <button type="submit" className="w-full py-2 px-4 bg-[var(--primary)] text-white font-bold rounded-lg shadow-md hover:bg-[var(--primary-hover)]">
                         {editingUsername ? 'Salvar Alterações' : 'Adicionar Profissional'}
                     </button>
                 </div>
@@ -212,10 +319,12 @@ const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, show
                  <div className="space-y-2 max-h-48 overflow-y-auto pr-2 -mr-2">
                     {Object.entries(professionals).map(([username, userData]) => (
                         <div key={username} className={`bg-white p-3 rounded-lg shadow flex items-center justify-between transition-all duration-500 ${userToDelete === username ? 'animate-fade-out' : ''}`}>
-                            <div>
-                                <p className="font-semibold text-[var(--text-dark)]">{userData.name} <span className="text-xs font-bold uppercase text-white bg-[var(--accent)] px-1.5 py-0.5 rounded-full ml-1">{userData.role}</span></p>
-                                <p className="text-sm text-[var(--secondary)]">@{username}</p>
-                                <p className="text-xs text-gray-500 mt-1 italic">{userData.assignedServices?.join(', ') || 'Nenhum serviço atribuído'}</p>
+                            <div className="flex items-center gap-3">
+                                <div className="w-3 h-10 rounded-full" style={{backgroundColor: userData.color || '#ccc' }}></div>
+                                <div>
+                                    <p className="font-semibold text-[var(--text-dark)]">{userData.name} <span className="text-xs font-bold uppercase text-white bg-[var(--accent)] px-1.5 py-0.5 rounded-full ml-1">{userData.role}</span></p>
+                                    <p className="text-sm text-[var(--secondary)]">@{username}</p>
+                                </div>
                             </div>
                             <div className="flex gap-1">
                                 <button
@@ -238,6 +347,14 @@ const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, show
                     ))}
                  </div>
             </div>
+            
+             <ScheduleModal 
+                isOpen={isScheduleModalOpen}
+                onClose={() => setIsScheduleModalOpen(false)}
+                schedule={formWorkSchedule}
+                onSave={(newSchedule) => setFormWorkSchedule(newSchedule)}
+                professionalName={formDisplayName || formUsername}
+            />
         </div>
     );
 };

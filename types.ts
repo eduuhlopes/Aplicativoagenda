@@ -21,12 +21,27 @@ export interface ModalInfo {
   onConfirm?: () => void;
 }
 
+export interface WorkDay {
+    start: string; // "HH:mm"
+    end: string;   // "HH:mm"
+}
+
+// Represents the schedule for a professional, where keys are days of the week (0=Sun, 1=Mon, etc.)
+export type WorkSchedule = {
+    [day in 0 | 1 | 2 | 3 | 4 | 5 | 6]?: WorkDay | null; // null means day off
+};
+
 // Renamed from User to Professional and expanded
 export interface Professional {
   username: string;
   name: string;
   role: 'admin' | 'professional';
   assignedServices: string[]; // Array of service names this professional provides
+  // New professional enhancement fields
+  bio?: string;
+  avatarUrl?: string;
+  color?: string; // Hex color code
+  workSchedule?: WorkSchedule;
 }
 
 // FIX: Add StoredProfessional type to correctly model user data with password from localStorage.
@@ -37,6 +52,11 @@ export interface StoredProfessional {
   password?: string;
   role?: 'admin' | 'professional';
   assignedServices?: string[];
+  // New professional enhancement fields
+  bio?: string;
+  avatarUrl?: string;
+  color?: string; // Hex color code
+  workSchedule?: WorkSchedule;
 }
 
 // Represents the client data as it's stored
@@ -82,4 +102,7 @@ export interface FinancialData {
   projectedRevenueCurrentMonth: number;
   averageMonthlyRevenue: number;
   totalAnnualRevenue: number;
+  // New detailed financial metrics
+  revenueByService: { [serviceName: string]: number };
+  revenueByProfessional: { [professionalName: string]: number };
 }

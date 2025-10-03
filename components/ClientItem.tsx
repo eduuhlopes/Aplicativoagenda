@@ -27,13 +27,15 @@ const ClientItem: React.FC<ClientItemProps> = ({ client, onEdit }) => {
     });
 
     const CANCELLATION_THRESHOLD = 2;
+    const INACTIVITY_THRESHOLD_DAYS = 90;
+
     const isFrequentCanceller = client.cancellationCount > CANCELLATION_THRESHOLD;
-    const needsAttention = !isFrequentCanceller && client.daysSinceLastVisit !== null && client.daysSinceLastVisit > 30;
+    const isInactive = client.daysSinceLastVisit !== null && client.daysSinceLastVisit > INACTIVITY_THRESHOLD_DAYS;
 
     const cardClasses = `p-5 rounded-lg shadow-md border flex flex-col justify-between transition-all hover:shadow-lg hover:scale-[1.03] ${
         isFrequentCanceller
         ? 'bg-rose-50 border-rose-300 hover:border-rose-400'
-        : needsAttention 
+        : isInactive 
         ? 'bg-amber-50 border-amber-300 hover:border-amber-400' 
         : 'bg-white border-[var(--border)] hover:border-[var(--accent)]'
     }`;
@@ -81,10 +83,10 @@ const ClientItem: React.FC<ClientItemProps> = ({ client, onEdit }) => {
                     <span>Cliente cancela com frequência.</span>
                 </div>
             )}
-             {needsAttention && (
+             {isInactive && !isFrequentCanceller && (
                 <div className="mt-4 pt-3 border-t border-amber-200 flex items-center text-sm text-amber-800 font-semibold">
                     <WarningIcon />
-                    <span>Requer atenção: inativa.</span>
+                    <span>Cliente inativa.</span>
                 </div>
             )}
         </div>

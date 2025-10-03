@@ -27,10 +27,22 @@ const useWindowSize = () => {
 };
 
 const getInitials = (name: string) => {
+    if (!name) return '??';
     const names = name.split(' ');
     if (names.length === 1) return name.substring(0, 2).toUpperCase();
     return (names[0][0] + names[names.length - 1][0]).toUpperCase();
 };
+
+const getContrastColor = (hexcolor: string): string => {
+  if (!hexcolor) return '#FFFFFF';
+  hexcolor = hexcolor.replace("#", "");
+  const r = parseInt(hexcolor.substr(0, 2), 16);
+  const g = parseInt(hexcolor.substr(2, 2), 16);
+  const b = parseInt(hexcolor.substr(4, 2), 16);
+  const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+  return (yiq >= 128) ? '#4A235A' : '#FFFFFF';
+};
+
 
 const CalendarView: React.FC<CalendarViewProps> = ({ appointments, blockedSlots, onEditAppointment, newlyAddedAppointmentId, professionals, currentUser }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -227,12 +239,13 @@ const AgendaListView: React.FC<ViewProps> = ({ date, appointments, blockedSlots,
                                 const appt = event as Appointment;
                                 const professional = professionals.find(p => p.username === appt.professionalUsername);
                                 const isNew = appt.id === newlyAddedAppointmentId;
-                                const borderColor = appt.status === 'delayed' ? 'border-[var(--warning)]' : 'border-[var(--primary)]';
+                                const professionalColor = professional?.color || 'var(--primary)';
                                 return (
                                     <div 
                                         key={appt.id} 
                                         onClick={() => onEditAppointment(appt)} 
-                                        className={`flex items-center gap-4 p-3 bg-white hover:bg-[var(--highlight)] cursor-pointer border-l-4 ${borderColor} rounded-r-lg shadow-sm ${isNew ? 'animate-new-item' : ''}`}
+                                        className={`flex items-center gap-4 p-3 bg-white hover:bg-[var(--highlight)] cursor-pointer border-l-4 rounded-r-lg shadow-sm ${isNew ? 'animate-new-item' : ''}`}
+                                        style={{ borderColor: professionalColor }}
                                     >
                                         <div className="font-semibold text-[var(--text-dark)] w-20 text-center">
                                              {appt.datetime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
@@ -242,7 +255,7 @@ const AgendaListView: React.FC<ViewProps> = ({ date, appointments, blockedSlots,
                                             <p className="text-sm text-[var(--secondary)]">{appt.services.map(s => s.name).join(', ')}</p>
                                         </div>
                                         {professional && (
-                                            <div className="w-8 h-8 flex-shrink-0 bg-[var(--secondary)] text-white text-xs font-bold rounded-full flex items-center justify-center" title={professional.name}>
+                                            <div className="w-8 h-8 flex-shrink-0 text-xs font-bold rounded-full flex items-center justify-center" title={professional.name} style={{ backgroundColor: professionalColor, color: getContrastColor(professionalColor) }}>
                                                 {getInitials(professional.name)}
                                             </div>
                                         )}
@@ -295,10 +308,9 @@ const MonthView: React.FC<ViewProps & { onDayClick: (day: Date) => void }> = ({ 
                                 {dayAppointments.slice(0, 3).map(a => {
                                      const isNew = a.id === newlyAddedAppointmentId;
                                      const professional = professionals.find(p => p.username === a.professionalUsername);
-                                     const bgColor = a.status === 'delayed' ? 'bg-[var(--warning)]' : 'bg-[var(--primary)]';
-                                     const hoverBgColor = a.status === 'delayed' ? 'hover:bg-amber-600' : 'hover:bg-[var(--primary-hover)]';
+                                     const professionalColor = professional?.color || 'var(--primary)';
                                      return (
-                                        <div key={a.id} onClick={(e) => { e.stopPropagation(); onEditAppointment(a); }} className={`flex items-center gap-1.5 appointment-pill ${bgColor} ${hoverBgColor} ${isNew ? 'animate-new-item' : ''}`}>
+                                        <div key={a.id} onClick={(e) => { e.stopPropagation(); onEditAppointment(a); }} className={`flex items-center gap-1.5 appointment-pill ${isNew ? 'animate-new-item' : ''}`} style={{ backgroundColor: professionalColor, color: getContrastColor(professionalColor) }}>
                                             {professional && <span className="text-xs font-bold opacity-75">{getInitials(professional.name)}</span>}
                                             <span className="truncate flex-grow">{a.clientName}</span>
                                         </div>
@@ -366,13 +378,13 @@ const TimelineView: React.FC<ViewProps> = ({ date, appointments, blockedSlots, o
                 const { top, height } = getPositionAndHeight(a.datetime, a.endTime);
                 const professional = professionals.find(p => p.username === a.professionalUsername);
                 const isNew = a.id === newlyAddedAppointmentId;
-                const bgColor = a.status === 'delayed' ? 'bg-[var(--warning)]' : 'bg-[var(--primary)]';
+                const professionalColor = professional?.color || 'var(--primary)';
                 return (
                     <div
                         key={a.id}
                         onClick={() => onEditAppointment(a)}
-                        className={`absolute w-[95%] left-[2.5%] p-2 rounded-md ${bgColor} text-white text-xs z-10 shadow-lg cursor-pointer opacity-90 hover:opacity-100 transition-opacity flex flex-col justify-start ${isNew ? 'animate-new-item' : ''}`}
-                        style={{ top: `${top}px`, height: `${height}px` }}
+                        className={`absolute w-[95%] left-[2.5%] p-2 rounded-md text-white text-xs z-10 shadow-lg cursor-pointer opacity-90 hover:opacity-100 transition-opacity flex flex-col justify-start ${isNew ? 'animate-new-item' : ''}`}
+                        style={{ top: `${top}px`, height: `${height}px`, backgroundColor: professionalColor, color: getContrastColor(professionalColor) }}
                         title={`${a.clientName} - ${a.services.map(s => s.name).join(', ')}`}
                     >
                         <div className="flex justify-between items-start">

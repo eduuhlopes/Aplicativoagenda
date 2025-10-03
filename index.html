@@ -90,6 +90,21 @@
         --highlight: #E8F5E9;
       }
 
+      [data-theme="dark"] {
+        --background: #1a1a2e;
+        --surface: rgba(23, 23, 43, 0.85);
+        --surface-opaque: #1e1e3f;
+        --primary: #e94560;
+        --primary-light: #f47a8d;
+        --primary-hover: #d03d56;
+        --secondary: #0f3460;
+        --accent: #f47a8d;
+        --text-dark: #ffffff;
+        --text-body: #dcdce6;
+        --border: #2a2a4a;
+        --highlight: #232343;
+      }
+
       body {
         background-color: var(--background);
         font-family: 'Poppins', sans-serif;
@@ -288,6 +303,10 @@
         position: relative;
         transition: background-color 0.2s ease-in-out;
       }
+      [data-theme="dark"] .calendar-day-cell.other-month {
+        background-color: rgba(0,0,0,0.2);
+        color: #555;
+      }
       .calendar-day-cell.other-month {
         background-color: rgba(240, 240, 240, 0.5);
         color: #aaa;
@@ -459,7 +478,7 @@
       .success-overlay {
         position: absolute;
         inset: 0;
-        background-color: rgba(254, 251, 251, 0.85); /* var(--background) with opacity */
+        background-color: var(--surface-opaque);
         backdrop-filter: blur(4px);
         display: flex;
         align-items: center;

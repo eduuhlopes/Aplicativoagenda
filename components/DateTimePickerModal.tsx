@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { TIMES, MONTHS } from '../constants';
-import { BlockedSlot, Appointment } from '../types';
+import { BlockedSlot, Appointment, Professional } from '../types';
 
 interface DateTimePickerModalProps {
     isOpen: boolean;
@@ -12,9 +12,11 @@ interface DateTimePickerModalProps {
     appointments?: Appointment[];
     editingAppointmentId?: number | null;
     totalDuration?: number;
+    professionals?: Professional[];
+    professionalUsername?: string;
 }
 
-const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClose, onConfirm, initialDate, blockedSlots = [], showBlockDayToggle = false, appointments = [], editingAppointmentId = null, totalDuration = 30 }) => {
+const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClose, onConfirm, initialDate, blockedSlots = [], showBlockDayToggle = false, appointments = [], editingAppointmentId = null, totalDuration = 30, professionals = [], professionalUsername = '' }) => {
     const [viewDate, setViewDate] = useState(initialDate || new Date());
     const [selectedDay, setSelectedDay] = useState<Date | null>(initialDate || new Date());
     const [selectedTime, setSelectedTime] = useState<string | null>(null);
@@ -118,6 +120,16 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
     
     const suggestedTimes = useMemo(() => {
         if (!selectedDay) return [];
+    
+        const selectedProfessional = professionals.find(p => p.username === professionalUsername);
+        const dayOfWeek = selectedDay.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+    
+        // Determine the working hours for the day
+        const workDay = selectedProfessional?.workSchedule?.[dayOfWeek];
+        if (!workDay) return []; // Day off
+    
+        const workStartTime = workDay.start;
+        const workEndTime = workDay.end;
 
         const dayStr = selectedDay.toDateString();
         const busySlots = new Set<string>();
@@ -143,6 +155,8 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
         // Mark busy slots from appointments
         appointments.forEach(appt => {
             if (appt.id === editingAppointmentId) return;
+            // Consider appointments of the selected professional
+            if (appt.professionalUsername !== professionalUsername) return;
             if (new Date(appt.datetime).toDateString() !== dayStr) return;
 
             const startTime = appt.datetime.getTime();
@@ -165,6 +179,12 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
 
         for (let i = 0; i <= TIMES.length - slotsNeeded; i++) {
             const startTimeCandidate = TIMES[i];
+            
+            // Check if within working hours
+            const endTimeCandidate = TIMES[i + slotsNeeded -1];
+            if (startTimeCandidate < workStartTime || endTimeCandidate >= workEndTime) {
+                continue;
+            }
 
             if (isTodaySelected) {
                 const [h, m] = startTimeCandidate.split(':').map(Number);
@@ -187,7 +207,7 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
         }
 
         return availableStartTimes;
-    }, [selectedDay, blockedSlots, appointments, totalDuration, editingAppointmentId]);
+    }, [selectedDay, blockedSlots, appointments, totalDuration, editingAppointmentId, professionals, professionalUsername]);
 
     if (!isOpen) return null;
 
