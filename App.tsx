@@ -25,8 +25,8 @@ import { getAverageColor, getContrastColor, generateGradient } from './component
 import { Appointment, Client, User, BlockedSlot, Service, MonthlyPackage, EnrichedClient, ModalInfo, AppointmentStatus } from './types';
 import { SERVICES } from './constants';
 
-const PlusIcon: React.FC = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+const PlusIcon: React.FC<{className?: string}> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-5 w-5 mr-2"} viewBox="0 0 20 20" fill="currentColor">
       <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
     </svg>
 );
@@ -395,7 +395,7 @@ const App: React.FC = () => {
                                 <h2 className="text-3xl font-bold text-[var(--text-dark)]">Agenda do Dia</h2>
                                 <button
                                     onClick={() => handleOpenForm(null)}
-                                    className="flex items-center px-6 py-3 bg-[var(--primary)] text-white font-bold rounded-lg shadow-md hover:bg-[var(--primary-hover)] transition-transform transform hover:scale-105 active:scale-95"
+                                    className="hidden sm:flex items-center px-6 py-3 bg-[var(--primary)] text-white font-bold rounded-lg shadow-md hover:bg-[var(--primary-hover)] transition-transform transform hover:scale-105 active:scale-95"
                                 >
                                     <PlusIcon />
                                     Novo Agendamento
@@ -441,7 +441,7 @@ const App: React.FC = () => {
 
     // Main App Layout
     return (
-        <div ref={appContainerRef} className="bg-[var(--background)] min-h-screen text-[var(--text-body)] transition-colors duration-500">
+        <div ref={appContainerRef} className="bg-[var(--background)] min-h-screen text-[var(--text-body)] transition-colors duration-500 pb-20">
             <div className={`p-4 sm:p-6 transition-all duration-500 ${headerStyle ? '' : 'bg-[var(--primary)]'}`}>
                 <Header 
                     logoUrl={logoUrl} 
@@ -481,8 +481,19 @@ const App: React.FC = () => {
                 {renderActiveView()}
             </main>
 
+            {/* Floating Action Button */}
+            {!['settings', 'services'].includes(activeView) && !isFormVisible && !isClientFormVisible && (
+                <button
+                    onClick={() => handleOpenForm(null)}
+                    className="fab"
+                    aria-label="Novo Agendamento"
+                >
+                    <PlusIcon className="h-8 w-8" />
+                </button>
+            )}
+
             {/* Modals and Forms as Overlays */}
-            {(isFormVisible || isClientFormVisible) && <div className="fixed inset-0 bg-black bg-opacity-50 z-40 animate-backdrop-in" onClick={isFormVisible ? handleCloseForm : handleCloseClientForm}></div>}
+            {(isFormVisible || isClientFormVisible) && <div className="fixed inset-0 bg-black bg-opacity-50 z-50 animate-backdrop-in" onClick={isFormVisible ? handleCloseForm : handleCloseClientForm}></div>}
             
             <div className={`form-container ${isFormVisible ? 'visible' : ''}`}>
                  {isFormVisible && 
@@ -495,6 +506,7 @@ const App: React.FC = () => {
                         blockedSlots={blockedSlots}
                         onMarkAsDelayed={handleMarkAsDelayed}
                         services={services}
+                        clients={clients}
                     />
                 }
             </div>

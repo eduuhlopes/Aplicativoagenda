@@ -180,6 +180,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, showToast }) => {
         setUsername(selectedUsername);
         setSelectedUser(selectedUsername);
         setPassword('');
+        setErrors(prev => {
+            const newErrors = { ...prev };
+            delete newErrors.password;
+            return newErrors;
+        });
         passwordInputRef.current?.focus();
     };
 

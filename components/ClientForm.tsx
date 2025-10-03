@@ -90,7 +90,13 @@ const ClientForm: React.FC<ClientFormProps> = ({ onSave, clientToEdit, onCancel,
                 setName(contact.name[0]);
             }
             if (contact.tel && contact.tel.length > 0) {
-                setPhone(formatPhone(contact.tel[0]));
+                let rawPhone = contact.tel[0];
+                let digits = rawPhone.replace(/\D/g, '');
+                // Check for Brazilian country code (+55) and remove it if present
+                if (digits.startsWith('55') && digits.length > 11) {
+                    digits = digits.substring(2);
+                }
+                setPhone(formatPhone(digits));
             }
         } catch (ex) {
             console.error('Error selecting contact:', ex);

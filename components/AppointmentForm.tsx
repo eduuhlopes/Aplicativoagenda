@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Appointment, BlockedSlot, AppointmentStatus, Service } from '../types';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Appointment, BlockedSlot, AppointmentStatus, Service, Client } from '../types';
 import DateTimePickerModal from './DateTimePickerModal';
 
 interface AppointmentFormProps {
@@ -11,6 +11,7 @@ interface AppointmentFormProps {
     blockedSlots: BlockedSlot[];
     onMarkAsDelayed: (appointment: Appointment) => void;
     services: Service[];
+    clients: Client[];
 }
 
 const CheckIcon = () => (
@@ -20,7 +21,7 @@ const CheckIcon = () => (
 );
 
 
-const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointmentToEdit, onUpdate, onCancelEdit, appointments, blockedSlots, onMarkAsDelayed, services }) => {
+const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointmentToEdit, onUpdate, onCancelEdit, appointments, blockedSlots, onMarkAsDelayed, services, clients }) => {
     const [clientName, setClientName] = useState('');
     const [clientPhone, setClientPhone] = useState('');
     const [selectedServices, setSelectedServices] = useState<{ name: string; value: number; duration: number; category: string }[]>([]);
@@ -29,6 +30,11 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
     const [observations, setObservations] = useState('');
     const [isPickerOpen, setIsPickerOpen] = useState(false);
     const [modifiedServiceIndices, setModifiedServiceIndices] = useState<Set<number>>(new Set());
+    
+    // State for client autocomplete
+    const [suggestions, setSuggestions] = useState<Client[]>([]);
+    const [isSuggestionsVisible, setIsSuggestionsVisible] = useState(false);
+    const suggestionBoxRef = useRef<HTMLDivElement>(null);
     
     useEffect(() => {
         if (appointmentToEdit) {
@@ -42,6 +48,19 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
             resetForm();
         }
     }, [appointmentToEdit]);
+    
+     // Effect to close suggestions when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (suggestionBoxRef.current && !suggestionBoxRef.current.contains(event.target as Node)) {
+                setIsSuggestionsVisible(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, []);
 
     const resetForm = () => {
         setClientName('');
@@ -51,6 +70,29 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
         setSelectedDateTime(null);
         setObservations('');
         setModifiedServiceIndices(new Set());
+        setSuggestions([]);
+        setIsSuggestionsVisible(false);
+    };
+
+    const handleClientNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        setClientName(value);
+
+        if (value.length > 1) {
+            const filteredSuggestions = clients.filter(client => 
+                client.name.toLowerCase().includes(value.toLowerCase())
+            );
+            setSuggestions(filteredSuggestions);
+            setIsSuggestionsVisible(true);
+        } else {
+            setIsSuggestionsVisible(false);
+        }
+    };
+
+    const handleSuggestionClick = (client: Client) => {
+        setClientName(client.name);
+        setClientPhone(client.phone);
+        setIsSuggestionsVisible(false);
     };
 
     const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -215,11 +257,25 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
+                <div className="relative">
                     <label htmlFor="client-name" className="block text-md font-medium text-[var(--text-dark)] mb-1">
                         Nome da Cliente:
                     </label>
-                    <input type="text" id="client-name" value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Digite o nome da cliente" className={inputClasses} required />
+                    <input type="text" id="client-name" value={clientName} onChange={handleClientNameChange} placeholder="Digite o nome da cliente" className={inputClasses} required autoComplete="off" />
+                    {isSuggestionsVisible && suggestions.length > 0 && (
+                         <div ref={suggestionBoxRef} className="absolute z-10 w-full mt-1 bg-white border border-[var(--border)] rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                            {suggestions.map(client => (
+                                <div
+                                    key={client.id}
+                                    onClick={() => handleSuggestionClick(client)}
+                                    className="px-4 py-2 cursor-pointer hover:bg-[var(--highlight)]"
+                                >
+                                    <p className="font-semibold text-[var(--text-dark)]">{client.name}</p>
+                                    <p className="text-sm text-[var(--secondary)]">{client.phone}</p>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 <div>

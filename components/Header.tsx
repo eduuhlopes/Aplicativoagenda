@@ -51,7 +51,7 @@ const Header: React.FC<HeaderProps> = ({ logoUrl, headerStyle, notificationAppoi
             className="relative flex flex-col sm:flex-row items-center justify-between transition-all duration-500"
             style={headerDynamicStyle}
         >
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 self-start">
                 <img src={logoUrl} alt="Spaço Delas Logo" className="h-16 w-16 rounded-full object-cover border-2 border-white/50 shadow-lg" />
                 <div className="text-left">
                     <h1 
@@ -69,7 +69,7 @@ const Header: React.FC<HeaderProps> = ({ logoUrl, headerStyle, notificationAppoi
                 </div>
             </div>
             
-            <div className="absolute top-4 right-4 sm:static flex items-center gap-2 mt-4 sm:mt-0">
+            <div className="flex w-full sm:w-auto justify-end items-center gap-2 mt-4 sm:mt-0">
                  <button 
                     onClick={onLogout}
                     className="p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-white transition-all active:scale-95 notification-bell-button"
@@ -94,7 +94,7 @@ const Header: React.FC<HeaderProps> = ({ logoUrl, headerStyle, notificationAppoi
                         )}
                     </button>
                     {isNotificationPopoverOpen && (
-                        <div className="absolute right-0 mt-2 w-80 bg-[var(--surface-opaque)] backdrop-blur-sm rounded-lg shadow-xl border border-[var(--border)] z-20 animate-popover-in origin-top-right">
+                        <div className="absolute right-0 mt-2 w-80 bg-[var(--surface-opaque)] backdrop-blur-sm rounded-lg shadow-xl border border-[var(--border)] z-50 animate-popover-in origin-top-right">
                             <div className="p-4 font-bold text-[var(--text-dark)] border-b border-[var(--border)]">
                                 Lembretes de Agendamento
                             </div>

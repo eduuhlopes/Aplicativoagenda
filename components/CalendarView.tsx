@@ -253,7 +253,10 @@ const MonthView: React.FC<{ date: Date, appointments: Appointment[], blockedSlot
 };
 
 const TimelineView: React.FC<{ date: Date, appointments: Appointment[], blockedSlots: BlockedSlot[], onEditAppointment: (a: Appointment) => void }> = ({ date, appointments, blockedSlots, onEditAppointment }) => {
-    const dayAppointments = appointments.filter(a => new Date(a.datetime).toDateString() === date.toDateString() && !['completed', 'cancelled'].includes(a.status));
+    const dayAppointments = appointments
+        .filter(a => new Date(a.datetime).toDateString() === date.toDateString() && !['completed', 'cancelled'].includes(a.status))
+        .sort((a, b) => a.datetime.getTime() - b.datetime.getTime());
+
     const dayBlockedSlots = blockedSlots.filter(s => new Date(s.date).toDateString() === date.toDateString());
 
     const getPositionAndHeight = (startTime: Date, endTime: Date) => {
@@ -302,7 +305,7 @@ const TimelineView: React.FC<{ date: Date, appointments: Appointment[], blockedS
                     <div
                         key={a.id}
                         onClick={() => onEditAppointment(a)}
-                        className={`absolute w-[95%] left-[2.5%] p-2 rounded-md ${bgColor} text-white text-xs z-10 shadow-lg cursor-pointer hover:opacity-80`}
+                        className={`absolute w-[95%] left-[2.5%] p-2 rounded-md ${bgColor} text-white text-xs z-10 shadow-lg cursor-pointer opacity-90 hover:opacity-100 transition-opacity`}
                         style={{ top: `${top}px`, height: `${height}px` }}
                         title={`${a.clientName} - ${a.services.map(s => s.name).join(', ')}`}
                     >
