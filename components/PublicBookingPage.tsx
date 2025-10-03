@@ -2,34 +2,25 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Appointment, Professional, Service, BlockedSlot, StoredProfessional } from '../types';
 import { SERVICES, TIMES, MONTHS } from '../constants';
 
-// Minimalist hook for using localStorage, adapted for public page
-const usePersistentState = <T,>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] => {
-    const [state, setState] = useState<T>(() => {
-        try {
-            const storedValue = localStorage.getItem(key);
-            const dateTimeReviver = (key: string, value: any) => {
-                if ((key === 'datetime' || key === 'endTime' || key === 'date') && typeof value === 'string') {
-                    const date = new Date(value);
-                    if (!isNaN(date.getTime())) return date;
-                }
-                return value;
-            };
-            return storedValue ? JSON.parse(storedValue, dateTimeReviver) : defaultValue;
-        } catch (error) {
-            return defaultValue;
-        }
-    });
-
-    useEffect(() => {
-        try {
-            localStorage.setItem(key, JSON.stringify(state));
-        } catch (error) {
-            console.error("Error writing to localStorage for key:", key, error);
-        }
-    }, [key, state]);
-
-    return [state, setState];
+// Helper to parse dates from JSON while loading
+const dateTimeReviver = (key: string, value: any) => {
+    if ((key === 'datetime' || key === 'endTime' || key === 'date') && typeof value === 'string') {
+        const date = new Date(value);
+        if (!isNaN(date.getTime())) return date;
+    }
+    return value;
 };
+
+// Generic loader from localStorage, used for initializing state
+const loadFromStorage = <T,>(key: string, defaultValue: T): T => {
+    try {
+        const storedValue = localStorage.getItem(key);
+        return storedValue ? JSON.parse(storedValue, dateTimeReviver) : defaultValue;
+    } catch {
+        return defaultValue;
+    }
+};
+
 
 const UserIcon: React.FC<{className?: string}> = ({className}) => (
     <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-16 w-16 text-gray-300"} viewBox="0 0 20 20" fill="currentColor">
@@ -48,34 +39,48 @@ const PublicBookingPage: React.FC = () => {
     const [selectedServices, setSelectedServices] = useState<Service[]>([]);
     const [selectedDateTime, setSelectedDateTime] = useState<Date | null>(null);
     const [showHistory, setShowHistory] = useState(false);
-    const [logoUrl, setLogoUrl] = useState('/logo.png');
 
-    // Data from LocalStorage
-    const [professionalsData] = usePersistentState<Record<string, StoredProfessional>>("spaco-delas-users", {});
-    const [services] = usePersistentState<Service[]>("spaco-delas-services", SERVICES);
-    const [appointments] = usePersistentState<Appointment[]>("spaco-delas-appointments", []);
-    const [blockedSlots] = usePersistentState<BlockedSlot[]>("spaco-delas-blockedSlots", []);
-    const [appointmentRequests, setAppointmentRequests] = usePersistentState<Appointment[]>("spaco-delas-appointment-requests", []);
+    // Data from LocalStorage, initialized directly on component load
+    const [logoUrl, setLogoUrl] = useState(() => loadFromStorage('spaco-delas-global-logo', '/logo.png'));
+    const [professionalsData, setProfessionalsData] = useState(() => loadFromStorage<Record<string, StoredProfessional>>("spaco-delas-users", {}));
+    const [services, setServices] = useState(() => loadFromStorage<Service[]>("spaco-delas-services", SERVICES));
+    const [appointments, setAppointments] = useState(() => loadFromStorage<Appointment[]>("spaco-delas-appointments", []));
+    const [blockedSlots, setBlockedSlots] = useState(() => loadFromStorage<BlockedSlot[]>("spaco-delas-blockedSlots", []));
     
-     useEffect(() => {
-        // Load logo
-        const storedLogo = localStorage.getItem('spaco-delas-global-logo');
-        if (storedLogo) setLogoUrl(JSON.parse(storedLogo));
-        // Apply theme
+    // Appointment requests are read and also written back to storage from this page
+    const [appointmentRequests, setAppointmentRequests] = useState(() => loadFromStorage<Appointment[]>("spaco-delas-appointment-requests", []));
+    
+    // Effect to apply theme on mount
+    useEffect(() => {
         const theme = localStorage.getItem('app-theme') || 'pink';
         document.documentElement.setAttribute('data-theme', theme);
     }, []);
+    
+    // Effect to save appointmentRequests back to localStorage when it changes
+    useEffect(() => {
+        try {
+            localStorage.setItem("spaco-delas-appointment-requests", JSON.stringify(appointmentRequests));
+        } catch (error) {
+            console.error("Error writing appointment requests to localStorage:", error);
+        }
+    }, [appointmentRequests]);
+
 
     const professionalsList = useMemo((): Professional[] => 
-        Object.entries(professionalsData).map(([username, data]) => ({ 
-            username,
-            name: data.name,
-            role: data.role || 'professional',
-            assignedServices: data.assignedServices || [],
-            bio: data.bio || `Especialista em ${data.assignedServices?.[0] || 'beleza e bem-estar'}.`,
-            avatarUrl: data.avatarUrl,
-            workSchedule: data.workSchedule || {},
-        })), 
+        Object.entries(professionalsData).map(([username, data]) => {
+            // FIX: Cast `data` to `StoredProfessional` to resolve errors where properties
+            // were being accessed on a variable inferred as `unknown` from `Object.entries`.
+            const professionalData = data as StoredProfessional;
+            return {
+                username,
+                name: professionalData.name,
+                role: professionalData.role || 'professional',
+                assignedServices: professionalData.assignedServices || [],
+                bio: professionalData.bio || `Especialista em ${professionalData.assignedServices?.[0] || 'beleza e bem-estar'}.`,
+                avatarUrl: professionalData.avatarUrl,
+                workSchedule: professionalData.workSchedule || {},
+            };
+        }), 
     [professionalsData]);
 
     const clientHistory = useMemo(() => {
