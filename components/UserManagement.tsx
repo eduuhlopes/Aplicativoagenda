@@ -317,34 +317,39 @@ const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, show
             <div>
                  <h3 className="text-xl font-semibold text-[var(--text-dark)] mb-3 text-center">Profissionais Existentes</h3>
                  <div className="space-y-2 max-h-48 overflow-y-auto pr-2 -mr-2">
-                    {Object.entries(professionals).map(([username, userData]) => (
-                        <div key={username} className={`bg-white p-3 rounded-lg shadow flex items-center justify-between transition-all duration-500 ${userToDelete === username ? 'animate-fade-out' : ''}`}>
-                            <div className="flex items-center gap-3">
-                                <div className="w-3 h-10 rounded-full" style={{backgroundColor: userData.color || '#ccc' }}></div>
-                                <div>
-                                    <p className="font-semibold text-[var(--text-dark)]">{userData.name} <span className="text-xs font-bold uppercase text-white bg-[var(--accent)] px-1.5 py-0.5 rounded-full ml-1">{userData.role}</span></p>
-                                    <p className="text-sm text-[var(--secondary)]">@{username}</p>
+                    {Object.entries(professionals).map(([username, userData]) => {
+                        // FIX: Cast userData from 'unknown' to 'StoredProfessional' to allow safe property access.
+                        // This resolves errors where properties like 'color', 'name', and 'role' were not found.
+                        const professionalData = userData as StoredProfessional;
+                        return (
+                            <div key={username} className={`bg-white p-3 rounded-lg shadow flex items-center justify-between transition-all duration-500 ${userToDelete === username ? 'animate-fade-out' : ''}`}>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-3 h-10 rounded-full" style={{backgroundColor: professionalData.color || '#ccc' }}></div>
+                                    <div>
+                                        <p className="font-semibold text-[var(--text-dark)]">{professionalData.name} <span className="text-xs font-bold uppercase text-white bg-[var(--accent)] px-1.5 py-0.5 rounded-full ml-1">{professionalData.role}</span></p>
+                                        <p className="text-sm text-[var(--secondary)]">@{username}</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-1">
+                                    <button
+                                        onClick={() => setEditingUsername(username)}
+                                        className="p-2 text-gray-500 hover:text-[var(--primary)] hover:bg-gray-100 rounded-full transition-all active:scale-95"
+                                        aria-label={`Editar ${username}`}
+                                    >
+                                        <EditIcon />
+                                    </button>
+                                    <button
+                                        onClick={() => handleDeleteUser(username)}
+                                        disabled={username === 'admin'}
+                                        className="p-2 text-[var(--danger)] hover:bg-red-100 rounded-full transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        aria-label={`Remover ${username}`}
+                                    >
+                                        <TrashIcon />
+                                    </button>
                                 </div>
                             </div>
-                            <div className="flex gap-1">
-                                <button
-                                    onClick={() => setEditingUsername(username)}
-                                    className="p-2 text-gray-500 hover:text-[var(--primary)] hover:bg-gray-100 rounded-full transition-all active:scale-95"
-                                    aria-label={`Editar ${username}`}
-                                >
-                                    <EditIcon />
-                                </button>
-                                <button
-                                    onClick={() => handleDeleteUser(username)}
-                                    disabled={username === 'admin'}
-                                    className="p-2 text-[var(--danger)] hover:bg-red-100 rounded-full transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    aria-label={`Remover ${username}`}
-                                >
-                                    <TrashIcon />
-                                </button>
-                            </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                  </div>
             </div>
             

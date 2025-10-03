@@ -15,8 +15,10 @@ const ChartBarIcon = () => (
 );
 
 const BreakdownChart: React.FC<{data: {[key: string]: number}, title: string, colorClass: string}> = ({ data, title, colorClass }) => {
-    const sortedData = Object.entries(data).sort(([, a], [, b]) => b - a).slice(0, 10); // Top 10
-    const maxValue = sortedData.length > 0 ? Math.max(...sortedData.map(([, value]) => value)) : 0;
+    // FIX: The value from Object.entries is inferred as 'unknown'. Cast to 'number' for sorting.
+    const sortedData = Object.entries(data).sort(([, a], [, b]) => (b as number) - (a as number)).slice(0, 10); // Top 10
+    // FIX: The value from Object.entries is inferred as 'unknown'. Cast to 'number' for Math.max.
+    const maxValue = sortedData.length > 0 ? Math.max(...sortedData.map(([, value]) => value as number)) : 0;
     
     if (sortedData.length === 0) {
         return (
@@ -38,11 +40,13 @@ const BreakdownChart: React.FC<{data: {[key: string]: number}, title: string, co
                             <div className="flex-grow bg-[var(--highlight)] rounded-full h-4">
                                 <div
                                     className={`${colorClass} h-4 rounded-full transition-all duration-500 ease-out`}
-                                    style={{ width: `${(value / maxValue) * 100}%` }}
+                                    // FIX: The value from Object.entries is inferred as 'unknown'. Cast to 'number' for arithmetic operation.
+                                    style={{ width: `${((value as number) / maxValue) * 100}%` }}
                                 />
                             </div>
                             <div className="font-bold text-sm text-[var(--success)] w-24 text-right">
-                                {value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                {/* FIX: The value from Object.entries is inferred as 'unknown'. Cast to 'number' to call its methods. */}
+                                {(value as number).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                             </div>
                         </div>
                     </div>
