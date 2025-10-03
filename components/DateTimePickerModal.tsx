@@ -123,13 +123,20 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
     
         const selectedProfessional = professionals.find(p => p.username === professionalUsername);
         const dayOfWeek = selectedDay.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6;
-    
-        // Determine the working hours for the day
-        const workDay = selectedProfessional?.workSchedule?.[dayOfWeek];
-        if (!workDay) return []; // Day off
-    
-        const workStartTime = workDay.start;
-        const workEndTime = workDay.end;
+
+        // Determine if a schedule is configured. It's configured if it's not undefined and has keys.
+        const schedule = selectedProfessional?.workSchedule;
+        const isScheduleConfigured = schedule && Object.keys(schedule).length > 0;
+        const workDay = schedule?.[dayOfWeek];
+
+        if (isScheduleConfigured && !workDay) {
+            // A schedule is set up, but this day is not in it or is null, so it's a day off.
+            return [];
+        }
+
+        // Use the specific work day hours, or fallback to the full day if no schedule is configured.
+        const workStartTime = workDay?.start || '07:00';
+        const workEndTime = workDay?.end || '20:00';
 
         const dayStr = selectedDay.toDateString();
         const busySlots = new Set<string>();
