@@ -192,7 +192,9 @@ const PublicBookingPage: React.FC = () => {
     );
 
     const renderStep2_Professional = () => {
-        const availableProfessionals = professionalsList.filter(prof => prof.role !== 'admin');
+        const availableProfessionals = professionalsList.filter(prof => 
+            prof.role !== 'admin' && prof.assignedServices && prof.assignedServices.length > 0
+        );
 
         return (
             <div className="animate-view-in">
