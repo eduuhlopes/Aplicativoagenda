@@ -186,28 +186,38 @@ const PublicBookingPage: React.FC = () => {
         </div>
     );
 
-    const renderStep2_Professional = () => (
-         <div className="animate-view-in">
-            <h2 className="text-2xl font-bold text-center text-[var(--text-dark)] mb-4">Escolha uma profissional</h2>
-            <div className="space-y-4">
-                {professionalsList.filter(prof => prof.role !== 'admin').map(prof => (
-                    <button key={prof.username} onClick={() => handleSelectProfessional(prof)} className="w-full flex items-center gap-4 p-4 bg-white border border-[var(--border)] rounded-lg shadow-sm text-left hover:border-[var(--primary)] hover:shadow-md transition-all">
-                        {prof.avatarUrl ? (
-                            <img src={prof.avatarUrl} alt={prof.name} className="h-16 w-16 rounded-full object-cover flex-shrink-0" />
-                        ) : (
-                             <div className="h-16 w-16 rounded-full flex-shrink-0 bg-gray-100 flex items-center justify-center">
-                                <UserIcon />
-                            </div>
-                        )}
-                        <div>
-                            <p className="font-bold text-lg text-[var(--text-dark)]">{prof.name}</p>
-                            <p className="text-sm text-[var(--text-body)]">{prof.bio}</p>
+    const renderStep2_Professional = () => {
+        const availableProfessionals = professionalsList.filter(prof => prof.role !== 'admin');
+
+        return (
+            <div className="animate-view-in">
+                <h2 className="text-2xl font-bold text-center text-[var(--text-dark)] mb-4">Escolha uma profissional</h2>
+                <div className="space-y-4">
+                    {availableProfessionals.length > 0 ? (
+                        availableProfessionals.map(prof => (
+                            <button key={prof.username} onClick={() => handleSelectProfessional(prof)} className="w-full flex items-center gap-4 p-4 bg-white border border-[var(--border)] rounded-lg shadow-sm text-left hover:border-[var(--primary)] hover:shadow-md transition-all">
+                                {prof.avatarUrl ? (
+                                    <img src={prof.avatarUrl} alt={prof.name} className="h-16 w-16 rounded-full object-cover flex-shrink-0" />
+                                ) : (
+                                    <div className="h-16 w-16 rounded-full flex-shrink-0 bg-gray-100 flex items-center justify-center">
+                                        <UserIcon />
+                                    </div>
+                                )}
+                                <div>
+                                    <p className="font-bold text-lg text-[var(--text-dark)]">{prof.name}</p>
+                                    <p className="text-sm text-[var(--text-body)]">{prof.bio}</p>
+                                </div>
+                            </button>
+                        ))
+                    ) : (
+                        <div className="text-center py-8 bg-white rounded-lg border border-dashed border-[var(--border)]">
+                            <p className="text-[var(--secondary)] italic">Nenhuma profissional disponível para agendamento no momento.</p>
                         </div>
-                    </button>
-                ))}
+                    )}
+                </div>
             </div>
-        </div>
-    );
+        );
+    };
     
      const availableServices = useMemo(() => {
         if (!selectedProfessional) return [];
