@@ -192,9 +192,7 @@ const PublicBookingPage: React.FC = () => {
     );
 
     const renderStep2_Professional = () => {
-        const availableProfessionals = professionalsList.filter(prof => 
-            prof.role !== 'admin' && prof.assignedServices && prof.assignedServices.length > 0
-        );
+        const availableProfessionals = professionalsList;
 
         return (
             <div className="animate-view-in">
@@ -500,7 +498,21 @@ const PublicBookingPage: React.FC = () => {
 
                             {step > 1 && step < 6 && (
                                 <div className="flex items-center justify-between text-sm mb-4 border-b border-[var(--border)] pb-4">
-                                    <button onClick={() => setStep(prev => Math.max(2, prev -1))} className="font-semibold text-[var(--primary)] hover:underline">&larr; Voltar</button>
+                                    <button
+                                        onClick={() => {
+                                            if (step === 2) {
+                                                setIsPhoneSubmitted(false);
+                                                setClientPhone('');
+                                                setClientName('');
+                                                setStep(1);
+                                            } else {
+                                                setStep(prev => prev - 1);
+                                            }
+                                        }}
+                                        className="font-semibold text-[var(--primary)] hover:underline"
+                                    >
+                                        &larr; Voltar
+                                    </button>
                                     <span className="font-bold text-[var(--secondary)]">Passo {step-1} de 4</span>
                                 </div>
                             )}
