@@ -1,13 +1,15 @@
 import React from 'react';
-import { Appointment, User } from '../types';
+import { Appointment, Professional } from '../types';
 
 interface HeaderProps {
     logoUrl: string;
     headerStyle: { background: string; color: string; notificationBg: string; } | null;
     notificationAppointments: Appointment[];
+    bookingRequests: Appointment[];
     isNotificationPopoverOpen: boolean;
     onToggleNotificationPopover: () => void;
-    currentUser: User | null;
+    onOpenBookingRequestModal: () => void;
+    currentUser: Professional | null;
     onLogout: () => void;
 }
 
@@ -34,8 +36,14 @@ const LogoutIcon = () => (
     </svg>
 );
 
+const InboxIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+    </svg>
+);
 
-const Header: React.FC<HeaderProps> = ({ logoUrl, headerStyle, notificationAppointments, isNotificationPopoverOpen, onToggleNotificationPopover, currentUser, onLogout }) => {
+
+const Header: React.FC<HeaderProps> = ({ logoUrl, headerStyle, notificationAppointments, bookingRequests, isNotificationPopoverOpen, onToggleNotificationPopover, onOpenBookingRequestModal, currentUser, onLogout }) => {
     const headerDynamicStyle = headerStyle ? { background: headerStyle.background, color: headerStyle.color } : {};
     const textAndIconDynamicStyle = headerStyle ? { color: headerStyle.color, textShadow: '1px 1px 3px rgba(0,0,0,0.2)' } : {};
     const buttonDynamicStyle = headerStyle ? {
@@ -55,7 +63,7 @@ const Header: React.FC<HeaderProps> = ({ logoUrl, headerStyle, notificationAppoi
                 <img src={logoUrl} alt="Spaço Delas Logo" className="h-16 w-16 rounded-full object-cover border-2 border-white/50 shadow-lg" />
                 <div className="text-left">
                     <h1 
-                        className="font-brand text-5xl md:text-6xl font-bold tracking-tight"
+                        className="font-brand text-5xl md:text-6xl font-bold"
                         style={textAndIconDynamicStyle}
                     >
                         Spaço Delas
@@ -79,6 +87,21 @@ const Header: React.FC<HeaderProps> = ({ logoUrl, headerStyle, notificationAppoi
                 >
                     <LogoutIcon />
                 </button>
+                 <div className="relative">
+                    <button 
+                        onClick={onOpenBookingRequestModal}
+                        className="p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-white transition-all active:scale-95 notification-bell-button"
+                        aria-label="Solicitações de Agendamento"
+                        style={buttonDynamicStyle}
+                    >
+                       <InboxIcon />
+                        {bookingRequests.length > 0 && (
+                            <span className="absolute top-0 right-0 block h-5 w-5 text-xs flex items-center justify-center rounded-full bg-red-500 border-2 border-white ring-2 ring-white">
+                                {bookingRequests.length}
+                            </span>
+                        )}
+                    </button>
+                </div>
                 <div id="notification-bell" className="relative">
                     <button 
                         onClick={onToggleNotificationPopover}

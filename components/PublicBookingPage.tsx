@@ -1,0 +1,419 @@
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Appointment, Professional, Service, BlockedSlot } from '../types';
+import { SERVICES, TIMES, MONTHS } from '../constants';
+
+// Minimalist hook for using localStorage, adapted for public page
+const usePersistentState = <T,>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] => {
+    const [state, setState] = useState<T>(() => {
+        try {
+            const storedValue = localStorage.getItem(key);
+            const dateTimeReviver = (key: string, value: any) => {
+                if ((key === 'datetime' || key === 'endTime' || key === 'date') && typeof value === 'string') {
+                    const date = new Date(value);
+                    if (!isNaN(date.getTime())) return date;
+                }
+                return value;
+            };
+            return storedValue ? JSON.parse(storedValue, dateTimeReviver) : defaultValue;
+        } catch (error) {
+            return defaultValue;
+        }
+    });
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(key, JSON.stringify(state));
+        } catch (error) {
+            console.error("Error writing to localStorage for key:", key, error);
+        }
+    }, [key, state]);
+
+    return [state, setState];
+};
+
+const PublicBookingPage: React.FC = () => {
+    // Component State
+    const [step, setStep] = useState(1);
+    const [clientPhone, setClientPhone] = useState('');
+    const [clientName, setClientName] = useState('');
+    const [isPhoneSubmitted, setIsPhoneSubmitted] = useState(false);
+    const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
+    const [selectedServices, setSelectedServices] = useState<Service[]>([]);
+    const [selectedDateTime, setSelectedDateTime] = useState<Date | null>(null);
+    const [showHistory, setShowHistory] = useState(false);
+    const [logoUrl, setLogoUrl] = useState('/logo.png');
+
+    // Data from LocalStorage
+    const [professionalsData] = usePersistentState<Record<string, Omit<Professional, 'username'>>>("spaco-delas-users", {});
+    const [services] = usePersistentState<Service[]>("spaco-delas-services", SERVICES);
+    const [appointments] = usePersistentState<Appointment[]>("spaco-delas-appointments", []);
+    const [blockedSlots] = usePersistentState<BlockedSlot[]>("spaco-delas-blockedSlots", []);
+    const [appointmentRequests, setAppointmentRequests] = usePersistentState<Appointment[]>("spaco-delas-appointment-requests", []);
+    
+     useEffect(() => {
+        // Load logo
+        const storedLogo = localStorage.getItem('spaco-delas-global-logo');
+        if (storedLogo) setLogoUrl(JSON.parse(storedLogo));
+        // Apply theme
+        const theme = localStorage.getItem('spaco-delas-global-theme') || 'pink';
+        document.documentElement.setAttribute('data-theme', theme);
+    }, []);
+
+    const professionalsList = useMemo((): Professional[] => 
+        Object.entries(professionalsData).map(([username, data]) => ({ username, ...data })), 
+    [professionalsData]);
+
+    const clientHistory = useMemo(() => {
+        if (!isPhoneSubmitted || !clientPhone) return [];
+        return appointments
+            .filter(a => a.clientPhone.replace(/\D/g, '') === clientPhone.replace(/\D/g, ''))
+            .sort((a,b) => b.datetime.getTime() - a.datetime.getTime());
+    }, [isPhoneSubmitted, clientPhone, appointments]);
+    
+    // --- Step Logic ---
+    const handlePhoneSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const existingClient = appointments.find(a => a.clientPhone.replace(/\D/g, '') === clientPhone.replace(/\D/g, ''));
+        if (existingClient) {
+            setClientName(existingClient.clientName);
+        }
+        setIsPhoneSubmitted(true);
+        setStep(2);
+    };
+    
+    const handleSelectProfessional = (prof: Professional) => {
+        setSelectedProfessional(prof);
+        setSelectedServices([]);
+        setSelectedDateTime(null);
+        setStep(3);
+    };
+
+    const handleServiceToggle = (service: Service) => {
+        setSelectedServices(prev => 
+            prev.some(s => s.name === service.name)
+                ? prev.filter(s => s.name !== service.name)
+                : [...prev, service]
+        );
+        setSelectedDateTime(null); // Reset date when services change
+    };
+
+    const handleDateTimeConfirm = (date: Date) => {
+        setSelectedDateTime(date);
+        setStep(5);
+    };
+    
+    const handleBookingRequest = () => {
+        if (!selectedProfessional || selectedServices.length === 0 || !selectedDateTime || !clientName) {
+            alert("Por favor, preencha todos os campos.");
+            return;
+        }
+
+        const totalDuration = selectedServices.reduce((sum, s) => sum + s.duration, 0);
+        const endTime = new Date(selectedDateTime.getTime() + totalDuration * 60 * 1000);
+
+        const newRequest: Appointment = {
+            id: Date.now(),
+            clientName,
+            clientPhone,
+            professionalUsername: selectedProfessional.username,
+            services: selectedServices,
+            datetime: selectedDateTime,
+            endTime,
+            status: 'pending',
+        };
+
+        setAppointmentRequests(prev => [...prev, newRequest]);
+        setStep(6); // Success step
+    };
+
+    const resetFlow = () => {
+        setStep(2);
+        setSelectedProfessional(null);
+        setSelectedServices([]);
+        setSelectedDateTime(null);
+    }
+    
+    // --- Render Methods ---
+    
+    const renderHeader = () => (
+         <header className="text-center py-6 bg-[var(--surface-opaque)] border-b-2 border-[var(--border)]">
+            <img src={logoUrl} alt="Spaço Delas Logo" className="h-20 w-20 rounded-full object-cover border-2 border-white/50 shadow-lg mx-auto mb-3" />
+            <h1 className="font-brand text-5xl text-[var(--text-dark)]">Spaço Delas</h1>
+            <p className="text-lg text-[var(--secondary)]">Agende seu horário online</p>
+        </header>
+    );
+
+    const renderStep1_Phone = () => (
+        <div className="animate-view-in">
+            <h2 className="text-2xl font-bold text-center text-[var(--text-dark)] mb-2">Bem-vinda!</h2>
+            <p className="text-center text-[var(--text-body)] mb-6">Digite seu telefone para começar ou ver seus agendamentos.</p>
+            <form onSubmit={handlePhoneSubmit} className="space-y-4">
+                <input
+                    type="tel"
+                    value={clientPhone}
+                    onChange={e => setClientPhone(e.target.value.replace(/\D/g, '').replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3'))}
+                    placeholder="(XX) XXXXX-XXXX"
+                    className="w-full h-12 px-4 text-lg text-center bg-[var(--highlight)] border-2 border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                    maxLength={15}
+                    required
+                />
+                 <button type="submit" className="w-full py-3 btn-primary-gradient text-white font-bold rounded-lg shadow-md hover:scale-105 transition-transform active:scale-95">
+                    Avançar
+                </button>
+            </form>
+        </div>
+    );
+
+    const renderStep2_Professional = () => (
+         <div className="animate-view-in">
+            <h2 className="text-2xl font-bold text-center text-[var(--text-dark)] mb-4">Escolha uma profissional</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {professionalsList.map(prof => (
+                    <button key={prof.username} onClick={() => handleSelectProfessional(prof)} className="p-4 bg-white border border-[var(--border)] rounded-lg shadow-sm text-center hover:border-[var(--primary)] hover:shadow-md transition-all">
+                        <p className="font-bold text-lg text-[var(--text-dark)]">{prof.name}</p>
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+    
+     const availableServices = useMemo(() => {
+        if (!selectedProfessional) return [];
+        if (selectedProfessional.role === 'admin') return services;
+        return services.filter(s => selectedProfessional.assignedServices.includes(s.name));
+    }, [selectedProfessional, services]);
+
+    const renderStep3_Services = () => (
+        <div className="animate-view-in">
+            <h2 className="text-2xl font-bold text-center text-[var(--text-dark)] mb-4">Selecione os serviços</h2>
+            <div className="space-y-3 max-h-80 overflow-y-auto p-2 -m-2">
+                {availableServices.map(service => {
+                    const isSelected = selectedServices.some(s => s.name === service.name);
+                    return (
+                        <div key={service.name} onClick={() => handleServiceToggle(service)} className={`flex justify-between items-center p-4 rounded-lg cursor-pointer transition-all border-2 ${isSelected ? 'bg-green-50 border-[var(--success)]' : 'bg-white border-[var(--border)] hover:border-[var(--accent)]'}`}>
+                            <div>
+                                <p className="font-bold text-[var(--text-dark)]">{service.name}</p>
+                                <p className="text-sm text-[var(--secondary)]">{service.duration} min</p>
+                            </div>
+                            <p className="font-semibold text-lg text-[var(--success)]">{service.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                        </div>
+                    );
+                })}
+            </div>
+             <button onClick={() => setStep(4)} disabled={selectedServices.length === 0} className="mt-6 w-full py-3 btn-primary-gradient text-white font-bold rounded-lg shadow-md hover:scale-105 transition-transform active:scale-95 disabled:opacity-50 disabled:grayscale">
+                Escolher Horário
+            </button>
+        </div>
+    );
+    
+    // Time Picker (integrated into Step 4)
+    const TimePicker = () => {
+        const [viewDate, setViewDate] = useState(new Date());
+        const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+
+        const totalDuration = useMemo(() => selectedServices.reduce((sum, s) => sum + s.duration, 0), [selectedServices]);
+
+        const suggestedTimes = useMemo(() => {
+            if (!selectedDay || !selectedProfessional) return [];
+            
+            const dayStr = selectedDay.toDateString();
+            const busySlots = new Set<string>();
+
+            // Blocked slots
+            blockedSlots.forEach(slot => {
+                if (new Date(slot.date).toDateString() !== dayStr) return;
+                // Simplified: assuming all blocks apply to all professionals for now
+                if (slot.isFullDay) TIMES.forEach(time => busySlots.add(time));
+                else if (slot.startTime) {
+                    const start = slot.startTime;
+                    const end = slot.endTime || TIMES[TIMES.indexOf(start) + 1] || start;
+                    TIMES.forEach(time => { if (time >= start && time < end) busySlots.add(time) });
+                }
+            });
+
+            // Appointments for the selected professional
+            appointments.forEach(appt => {
+                if (appt.professionalUsername !== selectedProfessional.username) return;
+                if (new Date(appt.datetime).toDateString() !== dayStr) return;
+                
+                const startTime = appt.datetime.getTime();
+                const endTime = appt.endTime.getTime();
+
+                TIMES.forEach(timeStr => {
+                    const [h, m] = timeStr.split(':').map(Number);
+                    const checkTime = new Date(selectedDay).setHours(h, m, 0, 0);
+                    if (checkTime >= startTime && checkTime < endTime) {
+                        busySlots.add(timeStr);
+                    }
+                });
+            });
+
+            const availableStartTimes: string[] = [];
+            const slotsNeeded = Math.ceil(totalDuration / 30);
+            
+            const today = new Date();
+            const isTodaySelected = selectedDay.toDateString() === today.toDateString();
+
+            for (let i = 0; i <= TIMES.length - slotsNeeded; i++) {
+                const startTimeCandidate = TIMES[i];
+
+                if (isTodaySelected) {
+                    const [h, m] = startTimeCandidate.split(':').map(Number);
+                    const candidateDate = new Date();
+                    candidateDate.setHours(h, m, 0, 0);
+                    if (candidateDate < today) continue;
+                }
+
+                let isSequenceAvailable = true;
+                for (let j = 0; j < slotsNeeded; j++) {
+                    if (busySlots.has(TIMES[i + j])) {
+                        isSequenceAvailable = false;
+                        break;
+                    }
+                }
+                if (isSequenceAvailable) availableStartTimes.push(startTimeCandidate);
+            }
+            return availableStartTimes;
+        }, [selectedDay, selectedProfessional, totalDuration]);
+
+        return (
+            <div>
+                 <div className="flex items-center justify-between mb-2">
+                    <button onClick={() => setViewDate(d => new Date(d.getFullYear(), d.getMonth() -1, 1))} className="p-2 rounded-full hover:bg-[var(--highlight)]">&lt;</button>
+                    <h4 className="font-bold">{`${MONTHS[viewDate.getMonth()]} ${viewDate.getFullYear()}`}</h4>
+                    <button onClick={() => setViewDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))} className="p-2 rounded-full hover:bg-[var(--highlight)]">&gt;</button>
+                </div>
+                {/* Simplified Calendar Grid */}
+                 <div className="grid grid-cols-7 gap-1 text-center mb-4">
+                    {Array.from({ length: new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate() }).map((_, dayIndex) => {
+                        const day = dayIndex + 1;
+                        const fullDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), day);
+                        const isPast = fullDate < new Date(new Date().toDateString());
+                        const isSelected = selectedDay?.toDateString() === fullDate.toDateString();
+                        const isBlocked = blockedSlots.some(s => s.isFullDay && new Date(s.date).toDateString() === fullDate.toDateString());
+
+                        return (
+                             <div key={day} onClick={() => !(isPast || isBlocked) && setSelectedDay(fullDate)}
+                                className={`w-10 h-10 flex items-center justify-center rounded-full transition-all ${isPast || isBlocked ? 'text-gray-400 cursor-not-allowed' : 'cursor-pointer hover:bg-[var(--border)]'} ${isSelected ? 'bg-[var(--primary)] text-white font-bold' : ''}`}>
+                                {day}
+                            </div>
+                        )
+                    })}
+                </div>
+                {/* Time Slots */}
+                {selectedDay && (
+                     <div className="border-t border-[var(--border)] pt-4">
+                        <h4 className="font-bold text-center mb-2">Horários para {selectedDay.toLocaleDateString('pt-BR', {day: '2-digit', month: 'long'})}</h4>
+                        <div className="grid grid-cols-4 gap-2 max-h-40 overflow-y-auto">
+                            {suggestedTimes.map(time => {
+                                const [h,m] = time.split(':').map(Number);
+                                const finalDate = new Date(selectedDay);
+                                finalDate.setHours(h,m);
+                                return (
+                                    <button key={time} onClick={() => handleDateTimeConfirm(finalDate)} className="p-2 rounded-lg bg-[var(--highlight)] hover:bg-[var(--accent)] transition">
+                                        {time}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    const renderStep4_DateTime = () => (
+         <div className="animate-view-in">
+            <h2 className="text-2xl font-bold text-center text-[var(--text-dark)] mb-4">Escolha a data e hora</h2>
+            <TimePicker />
+        </div>
+    );
+    
+    const renderStep5_Confirm = () => (
+        <div className="animate-view-in">
+            <h2 className="text-2xl font-bold text-center text-[var(--text-dark)] mb-4">Confirme seu agendamento</h2>
+            <div className="bg-white p-4 rounded-lg border border-[var(--border)] space-y-2 text-md">
+                <p><strong>Profissional:</strong> {selectedProfessional?.name}</p>
+                <p><strong>Serviços:</strong> {selectedServices.map(s => s.name).join(', ')}</p>
+                <p><strong>Data:</strong> {selectedDateTime?.toLocaleString('pt-BR', { dateStyle: 'full', timeStyle: 'short' })}</p>
+                <p className="font-bold text-xl text-[var(--success)]"><strong>Total:</strong> {selectedServices.reduce((s,i) => s + i.value, 0).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</p>
+            </div>
+            <div className="mt-4">
+                 <label htmlFor="client-name" className="block font-medium text-[var(--text-dark)] mb-1">Seu nome completo:</label>
+                 <input type="text" id="client-name" value={clientName} onChange={e => setClientName(e.target.value)} required className="w-full h-11 px-3 bg-[var(--highlight)] border-2 border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"/>
+            </div>
+            <button onClick={handleBookingRequest} className="mt-6 w-full py-3 btn-primary-gradient text-white font-bold rounded-lg shadow-md hover:scale-105 transition-transform active:scale-95">
+                Enviar Solicitação
+            </button>
+        </div>
+    );
+    
+    const renderStep6_Success = () => (
+        <div className="animate-view-in text-center">
+             <svg className="success-checkmark mx-auto" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
+                <circle className="success-checkmark__circle" cx="26" cy="26" r="25" fill="none"/>
+                <path className="success-checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
+            </svg>
+            <h2 className="text-2xl font-bold text-center text-[var(--text-dark)] mt-4 mb-2">Solicitação Enviada!</h2>
+            <p className="text-[var(--text-body)] mb-6">Seu pedido foi enviado com sucesso. Aguarde a confirmação da nossa equipe via WhatsApp.</p>
+            <button onClick={() => window.location.reload()} className="w-full max-w-sm py-3 btn-primary-gradient text-white font-bold rounded-lg shadow-md hover:scale-105 transition-transform active:scale-95">
+                Agendar Novo Horário
+            </button>
+        </div>
+    );
+    
+     const renderHistory = () => (
+        <div className="animate-view-in mt-6">
+            <button onClick={() => setShowHistory(prev => !prev)} className="font-bold text-[var(--primary)] w-full text-left mb-2">
+                {showHistory ? 'Ocultar Histórico' : 'Ver Meus Agendamentos'}
+            </button>
+            {showHistory && (
+                 <div className="space-y-3 max-h-60 overflow-y-auto border-t-2 border-[var(--border)] pt-3">
+                    {clientHistory.length > 0 ? clientHistory.map(appt => (
+                         <div key={appt.id} className="p-3 bg-white border-l-4 border-[var(--primary)] rounded-r-md">
+                            <p className="font-bold">{appt.datetime.toLocaleString('pt-BR', {dateStyle: 'short', timeStyle: 'short'})}</p>
+                            <p className="text-sm">{appt.services.map(s => s.name).join(', ')}</p>
+                            <p className="text-sm font-semibold capitalize">Status: {appt.status}</p>
+                        </div>
+                    )) : <p className="text-center italic text-[var(--secondary)]">Nenhum agendamento encontrado.</p>}
+                </div>
+            )}
+        </div>
+    );
+
+
+    return (
+        <div className="bg-[var(--background)] min-h-screen font-sans">
+            {renderHeader()}
+            <main className="p-4 sm:p-8 max-w-2xl mx-auto">
+                <div className="bg-[var(--surface-opaque)] p-6 rounded-2xl shadow-lg border border-[var(--border)]">
+                    {!isPhoneSubmitted && renderStep1_Phone()}
+                    {isPhoneSubmitted && (
+                        <>
+                            <div className="flex justify-between items-center text-sm mb-4">
+                               <p className="text-[var(--text-body)]">Telefone: <strong>{clientPhone}</strong></p>
+                               <button onClick={() => { setIsPhoneSubmitted(false); setStep(1); }} className="font-semibold text-[var(--primary)] hover:underline">Trocar</button>
+                            </div>
+
+                            {step > 1 && step < 6 && (
+                                <div className="flex items-center justify-between text-sm mb-4 border-b border-[var(--border)] pb-4">
+                                    <button onClick={() => setStep(prev => Math.max(2, prev -1))} className="font-semibold text-[var(--primary)] hover:underline">&larr; Voltar</button>
+                                    <span className="font-bold text-[var(--secondary)]">Passo {step-1} de 4</span>
+                                </div>
+                            )}
+
+                            {step === 2 && renderStep2_Professional()}
+                            {step === 3 && renderStep3_Services()}
+                            {step === 4 && renderStep4_DateTime()}
+                            {step === 5 && renderStep5_Confirm()}
+                            {step === 6 && renderStep6_Success()}
+                        </>
+                    )}
+                </div>
+                {isPhoneSubmitted && step !== 6 && renderHistory()}
+            </main>
+        </div>
+    );
+};
+
+export default PublicBookingPage;

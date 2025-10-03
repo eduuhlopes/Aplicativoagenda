@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 
 // Components
@@ -11,7 +9,7 @@ import CollapsibleSection from './components/CollapsibleSection';
 import Header from './components/Header';
 import LoginScreen from './components/LoginScreen';
 import Modal from './components/Modal';
-import RevenueDashboard from './components/RevenueDashboard';
+import FinancialsView from './components/FinancialsView';
 import ServicesView from './components/ServicesView';
 import Toast from './components/Toast';
 import ThemeSwitcher, { themes } from './components/ThemeSwitcher';
@@ -19,10 +17,13 @@ import BackupRestore from './components/BackupRestore';
 import LogoUploader from './components/LogoUploader';
 import NotificationManager from './components/NotificationManager';
 import UserManagement from './components/UserManagement';
+import BookingRequestManager from './components/BookingRequestManager';
+
 
 // Utils, Types, and Constants
 import { getAverageColor, getContrastColor, generateGradient } from './components/colorUtils';
-import { Appointment, Client, User, BlockedSlot, Service, MonthlyPackage, EnrichedClient, ModalInfo, AppointmentStatus } from './types';
+// FIX: Imported StoredProfessional type to correctly type the 'professionals' state.
+import { Appointment, Client, Professional, BlockedSlot, Service, MonthlyPackage, EnrichedClient, ModalInfo, AppointmentStatus, FinancialData, StoredProfessional } from './types';
 import { SERVICES } from './constants';
 
 const PlusIcon: React.FC<{className?: string}> = ({ className }) => (
@@ -69,24 +70,29 @@ const usePersistentState = <T,>(key: string, defaultValue: T): [T, React.Dispatc
 
 const App: React.FC = () => {
     // --- STATE MANAGEMENT ---
-    const [currentUser, setCurrentUser] = useState<User | null>(null);
-    const storageKeyPrefix = useMemo(() => currentUser ? `spaco-delas-${currentUser.username}` : 'spaco-delas-global', [currentUser]);
-
-    // Data State
-    const [appointments, setAppointments] = usePersistentState<Appointment[]>(`${storageKeyPrefix}-appointments`, []);
-    const [clients, setClients] = usePersistentState<Client[]>(`${storageKeyPrefix}-clients`, []);
-    const [blockedSlots, setBlockedSlots] = usePersistentState<BlockedSlot[]>(`${storageKeyPrefix}-blockedSlots`, []);
-    const [services, setServices] = usePersistentState<Service[]>(`${storageKeyPrefix}-services`, SERVICES);
-    const [monthlyPackage, setMonthlyPackage] = usePersistentState<MonthlyPackage>(`${storageKeyPrefix}-package`, { serviceName: 'Pé+Mão', price: 180 });
+    const [currentUser, setCurrentUser] = useState<Professional | null>(null);
     
-    // Global/UI State (some are user-specific, some are global)
+    // Data State (now global for the whole application)
+    const [appointments, setAppointments] = usePersistentState<Appointment[]>('spaco-delas-appointments', []);
+    const [clients, setClients] = usePersistentState<Client[]>('spaco-delas-clients', []);
+    const [blockedSlots, setBlockedSlots] = usePersistentState<BlockedSlot[]>('spaco-delas-blockedSlots', []);
+    const [services, setServices] = usePersistentState<Service[]>('spaco-delas-services', SERVICES);
+    const [monthlyPackage, setMonthlyPackage] = usePersistentState<MonthlyPackage>('spaco-delas-package', { serviceName: 'Pé+Mão', price: 180 });
+    // FIX: Changed type to Record<string, StoredProfessional> to correctly handle password data.
+    const [professionals, setProfessionals] = usePersistentState<Record<string, StoredProfessional>>('spaco-delas-users', {});
+    const [appointmentRequests, setAppointmentRequests] = usePersistentState<Appointment[]>('spaco-delas-appointment-requests', []);
+    
+    // Global/UI State
     const [logoUrl, setLogoUrl] = usePersistentState<string>('spaco-delas-global-logo', '/logo.png');
     const [currentTheme, setCurrentTheme] = usePersistentState<string>('spaco-delas-global-theme', 'pink');
-    const [activeView, setActiveView] = useState<'agenda' | 'calendar' | 'clients' | 'services' | 'settings'>('agenda');
+    const [activeView, setActiveView] = useState<'agenda' | 'clients' | 'financeiro' | 'services' | 'settings'>('agenda');
+    const [newlyAddedAppointmentId, setNewlyAddedAppointmentId] = useState<number | null>(null);
+    const [viewingClientHistory, setViewingClientHistory] = useState<Client | null>(null);
     
     // Form & Modal Visibility State
     const [isFormVisible, setIsFormVisible] = useState(false);
     const [isClientFormVisible, setIsClientFormVisible] = useState(false);
+    const [isBookingRequestModalOpen, setIsBookingRequestModalOpen] = useState(false);
     const [appointmentToEdit, setAppointmentToEdit] = useState<Appointment | null>(null);
     const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
     const [modalInfo, setModalInfo] = useState<ModalInfo>({ isOpen: false, title: '', message: '' });
@@ -153,6 +159,17 @@ const App: React.FC = () => {
     
     // --- DERIVED STATE & MEMOS ---
     
+    // Transform professionals record into an array for easier use in components
+    const professionalsList = useMemo((): Professional[] => {
+        // FIX: Safely construct Professional[] from StoredProfessional data, omitting passwords and providing fallbacks for optional fields.
+        return Object.entries(professionals).map(([username, data]) => ({
+            username,
+            name: data.name,
+            role: data.role || 'professional',
+            assignedServices: data.assignedServices || []
+        }));
+    }, [professionals]);
+
     // Calculate client stats
     const enrichedClients = useMemo((): EnrichedClient[] => {
         return clients.map(client => {
@@ -186,25 +203,54 @@ const App: React.FC = () => {
             .sort((a, b) => a.datetime.getTime() - b.datetime.getTime());
     }, [appointments]);
     
-     // Calculate revenue
-    const { projectedRevenue, monthlyRevenue } = useMemo(() => {
+     // Calculate comprehensive financial data
+    const financialData = useMemo((): FinancialData => {
+        const monthlyRevenue: { [key: string]: number } = {};
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
+        const currentMonthKey = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+        
+        let projectedRevenueCurrentMonth = 0;
+        let totalAnnualRevenue = 0;
 
-        return appointments.reduce((acc, appt) => {
+        for (const appt of appointments) {
+            const apptDate = appt.datetime;
             const value = appt.services.reduce((sum, s) => sum + s.value, 0);
-            const apptMonth = appt.datetime.getMonth();
-            const apptYear = appt.datetime.getFullYear();
 
-            if (appt.status === 'scheduled' || appt.status === 'confirmed' || appt.status === 'delayed') {
-                acc.projectedRevenue += value;
+            // Completed appointments contribute to historical monthly revenue
+            if (appt.status === 'completed') {
+                const monthKey = `${apptDate.getFullYear()}-${String(apptDate.getMonth()).padStart(2, '0')}`;
+                monthlyRevenue[monthKey] = (monthlyRevenue[monthKey] || 0) + value;
+                if (apptDate.getFullYear() === currentYear) {
+                    totalAnnualRevenue += value;
+                }
             }
-            if (appt.status === 'completed' && apptMonth === currentMonth && apptYear === currentYear) {
-                acc.monthlyRevenue += value;
+
+            // Scheduled/Confirmed/Delayed appointments in the current month contribute to projection
+            if (apptDate.getFullYear() === currentYear && apptDate.getMonth() === currentMonth) {
+                if (['scheduled', 'confirmed', 'delayed'].includes(appt.status)) {
+                    projectedRevenueCurrentMonth += value;
+                }
             }
-            return acc;
-        }, { projectedRevenue: 0, monthlyRevenue: 0 });
+        }
+        
+        const completedMonthsValues = Object.values(monthlyRevenue);
+        const averageMonthlyRevenue = completedMonthsValues.length > 0
+            ? completedMonthsValues.reduce((a, b) => a + b, 0) / completedMonthsValues.length
+            : 0;
+            
+        const currentMonthRevenue = monthlyRevenue[currentMonthKey] || 0;
+        // The total projection includes what's already completed this month
+        projectedRevenueCurrentMonth += currentMonthRevenue; 
+
+        return {
+            monthlyRevenue,
+            currentMonthRevenue,
+            projectedRevenueCurrentMonth,
+            averageMonthlyRevenue,
+            totalAnnualRevenue,
+        };
     }, [appointments]);
 
     // --- HANDLERS ---
@@ -222,7 +268,7 @@ const App: React.FC = () => {
     const closeModal = useCallback(() => setModalInfo({ isOpen: false, title: '', message: '' }), []);
     
     // Auth
-    const handleLogin = useCallback((user: User) => {
+    const handleLogin = useCallback((user: Professional) => {
         setCurrentUser(user);
         sessionStorage.setItem('spaco-delas-currentUser', JSON.stringify(user));
         showToast(`Bem-vinda, ${user.name}!`, 'success');
@@ -258,6 +304,15 @@ const App: React.FC = () => {
         setClientToEdit(null);
     }, []);
     
+    const handleViewClientHistory = useCallback((client: Client) => {
+        handleCloseForm();
+        // Delay allows form to animate out before view switch
+        setTimeout(() => {
+            setViewingClientHistory(client);
+            setActiveView('clients');
+        }, 150);
+    }, [handleCloseForm]);
+
     // Generate WhatsApp message and open link
     const openWhatsApp = (appointment: Appointment, messageType: 'new' | 'update' | 'cancel') => {
         const phone = appointment.clientPhone.replace(/\D/g, '');
@@ -289,20 +344,31 @@ const App: React.FC = () => {
             status: 'scheduled',
         };
         setAppointments(prev => [...prev, newAppointment].sort((a,b) => a.datetime.getTime() - b.datetime.getTime()));
-        handleCloseForm();
+        setNewlyAddedAppointmentId(newAppointment.id);
+        setTimeout(() => setNewlyAddedAppointmentId(null), 2000); // Animation duration is 1.5s
         showToast('Agendamento criado com sucesso!', 'success');
-        openWhatsApp(newAppointment, 'new');
-    }, [handleCloseForm, showToast, setAppointments]);
+        
+        // Instead of calling openWhatsApp directly, show a modal to confirm.
+        // This makes the action more explicit for the user and more robust against popup blockers.
+        showModal(
+            'Notificar Cliente?',
+            `Deseja enviar uma mensagem de confirmação para ${newAppointment.clientName} no WhatsApp?`,
+            () => {
+                openWhatsApp(newAppointment, 'new');
+                closeModal(); // Explicitly close the modal after action
+            }
+        );
+    }, [showToast, setAppointments, showModal, closeModal]);
 
     const handleUpdateAppointment = useCallback((updatedAppointment: Appointment) => {
         setAppointments(prev => prev.map(a => a.id === updatedAppointment.id ? updatedAppointment : a));
-        handleCloseForm();
         showToast('Agendamento atualizado!', 'success');
         showModal('Notificar Cliente?', 'Deseja enviar uma mensagem no WhatsApp com as alterações?', () => {
             const messageType = updatedAppointment.status === 'cancelled' ? 'cancel' : 'update';
             openWhatsApp(updatedAppointment, messageType);
+            closeModal(); // Explicitly close the modal after action
         });
-    }, [handleCloseForm, showToast, showModal, setAppointments]);
+    }, [showToast, showModal, setAppointments, closeModal]);
 
     const handleMarkAsDelayed = useCallback((appointment: Appointment) => {
         setAppointments(prev => prev.map(a => a.id === appointment.id ? { ...a, status: 'delayed' } : a));
@@ -321,9 +387,6 @@ const App: React.FC = () => {
         handleCloseClientForm();
     }, [handleCloseClientForm, showToast, setClients]);
     
-    // Fix: Create a handler for updating a single service to pass to ServicesView.
-    // This resolves the type mismatch where setServices (expecting Service[]) was
-    // passed to a prop expecting a function that takes a single Service.
     const handleUpdateService = useCallback((updatedService: Service) => {
         setServices(prevServices =>
             prevServices.map(service =>
@@ -332,6 +395,27 @@ const App: React.FC = () => {
         );
         showToast('Serviço atualizado com sucesso!', 'success');
     }, [setServices, showToast]);
+
+    // Booking Request Handlers
+    const handleApproveRequest = useCallback((requestToApprove: Appointment) => {
+        // Change status to 'scheduled' and add to main appointments
+        const approvedAppointment = { ...requestToApprove, status: 'scheduled' as const };
+        setAppointments(prev => [...prev, approvedAppointment].sort((a,b) => a.datetime.getTime() - b.datetime.getTime()));
+
+        // Remove from requests
+        setAppointmentRequests(prev => prev.filter(req => req.id !== requestToApprove.id));
+        
+        showToast('Solicitação aprovada e adicionada à agenda!', 'success');
+        showModal('Notificar Cliente?', `Deseja enviar uma confirmação para ${requestToApprove.clientName} no WhatsApp?`, () => {
+            openWhatsApp(approvedAppointment, 'new');
+        });
+    }, [setAppointments, setAppointmentRequests, showToast, showModal]);
+
+    const handleRejectRequest = useCallback((requestId: number) => {
+        setAppointmentRequests(prev => prev.filter(req => req.id !== requestId));
+        showToast('Solicitação rejeitada.', 'success');
+    }, [setAppointmentRequests, showToast]);
+
 
     // Settings Handlers
     const handleExportData = useCallback(() => {
@@ -344,6 +428,7 @@ const App: React.FC = () => {
                 monthlyPackage,
                 logoUrl,
                 currentTheme,
+                professionals,
             };
             const dataStr = JSON.stringify(dataToExport, null, 2);
             const blob = new Blob([dataStr], { type: 'application/json' });
@@ -360,7 +445,7 @@ const App: React.FC = () => {
             console.error(e);
             showModal('Erro de Exportação', 'Não foi possível gerar o arquivo de backup.');
         }
-    }, [appointments, clients, blockedSlots, services, monthlyPackage, logoUrl, currentTheme, showToast, showModal]);
+    }, [appointments, clients, blockedSlots, services, monthlyPackage, logoUrl, currentTheme, professionals, showToast, showModal]);
 
     const handleImportData = useCallback((data: any) => {
         try {
@@ -373,6 +458,7 @@ const App: React.FC = () => {
                 setMonthlyPackage(data.monthlyPackage || { serviceName: 'Pé+Mão', price: 180 });
                 setLogoUrl(data.logoUrl || '/logo.png');
                 setCurrentTheme(data.currentTheme || 'pink');
+                setProfessionals(data.professionals || {});
                 showToast('Dados restaurados com sucesso!', 'success');
             } else {
                  throw new Error("Formato de arquivo inválido.");
@@ -380,51 +466,84 @@ const App: React.FC = () => {
         } catch(e: any) {
              showModal('Erro de Importação', `Falha ao restaurar dados. Detalhe: ${e.message}`);
         }
-    }, [setAppointments, setClients, setBlockedSlots, setServices, setMonthlyPackage, setLogoUrl, setCurrentTheme, showToast, showModal]);
+    }, [setAppointments, setClients, setBlockedSlots, setServices, setMonthlyPackage, setLogoUrl, setCurrentTheme, setProfessionals, showToast, showModal]);
     
 
     // --- RENDER LOGIC ---
 
     const renderActiveView = () => {
+        if (!currentUser) return null; // Should not happen if LoginScreen guard is working
         switch (activeView) {
             case 'agenda':
                 return (
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        <div className="lg:col-span-2 space-y-6">
-                            <div className="flex justify-between items-center">
-                                <h2 className="text-3xl font-bold text-[var(--text-dark)]">Agenda do Dia</h2>
-                                <button
-                                    onClick={() => handleOpenForm(null)}
-                                    className="hidden sm:flex items-center px-6 py-3 bg-[var(--primary)] text-white font-bold rounded-lg shadow-md hover:bg-[var(--primary-hover)] transition-transform transform hover:scale-105 active:scale-95"
-                                >
-                                    <PlusIcon />
-                                    Novo Agendamento
-                                </button>
-                            </div>
-                            <CalendarView appointments={appointments} blockedSlots={blockedSlots} onEditAppointment={handleOpenForm} />
+                    <div>
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-3xl font-bold text-[var(--text-dark)]">Agenda</h2>
+                            <button
+                                onClick={() => handleOpenForm(null)}
+                                className="hidden sm:flex items-center px-6 py-3 bg-[var(--primary)] text-white font-bold rounded-lg shadow-md hover:bg-[var(--primary-hover)] transition-transform transform hover:scale-105 active:scale-95"
+                            >
+                                <PlusIcon />
+                                Novo Agendamento
+                            </button>
                         </div>
-                        <div className="lg:col-span-1">
-                            <RevenueDashboard projectedRevenue={projectedRevenue} monthlyRevenue={monthlyRevenue} />
-                        </div>
+                        <CalendarView 
+                            appointments={appointments} 
+                            blockedSlots={blockedSlots} 
+                            onEditAppointment={handleOpenForm} 
+                            newlyAddedAppointmentId={newlyAddedAppointmentId}
+                            professionals={professionalsList}
+                            currentUser={currentUser}
+                        />
                     </div>
                 );
-            case 'calendar':
-                return <CalendarView appointments={appointments} blockedSlots={blockedSlots} onEditAppointment={handleOpenForm} />;
             case 'clients':
-                return <ClientList clients={enrichedClients} onAddClient={() => handleOpenClientForm(null)} onEditClient={client => handleOpenClientForm(client)} />;
+                return (
+                    <ClientList 
+                        clients={enrichedClients} 
+                        appointments={appointments}
+                        onAddClient={() => handleOpenClientForm(null)} 
+                        onEditClient={client => handleOpenClientForm(client)} 
+                        viewingHistoryFor={viewingClientHistory}
+                        onClearHistoryView={() => setViewingClientHistory(null)}
+                    />
+                );
+            case 'financeiro':
+                return <FinancialsView financialData={financialData} />;
             case 'services':
                 return <ServicesView services={services} onUpdateService={handleUpdateService} monthlyPackage={monthlyPackage} onUpdatePackage={setMonthlyPackage} />;
             case 'settings':
                 return (
                     <div className="max-w-4xl mx-auto space-y-8">
                         <h2 className="text-4xl font-bold text-[var(--text-dark)] text-center">Configurações</h2>
+                        
+                        <div className="text-center">
+                            <h3 className="text-xl font-bold text-[var(--text-dark)]">Link Público para Agendamento</h3>
+                            <p className="text-md text-[var(--text-body)] mb-2">Compartilhe este link com suas clientes:</p>
+                            <div className="flex items-center justify-center gap-2 p-2 bg-[var(--highlight)] border border-dashed border-[var(--border)] rounded-lg">
+                                <a href="/agendar" target="_blank" className="font-mono text-[var(--primary)] font-bold hover:underline">
+                                    {window.location.origin}/agendar
+                                </a>
+                                <button
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(`${window.location.origin}/agendar`);
+                                        showToast('Link copiado!', 'success');
+                                    }}
+                                    className="p-2 text-[var(--secondary)] hover:bg-[var(--border)] rounded-md transition-colors"
+                                    title="Copiar link"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M7 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z" /><path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4a2 2 0 00-2-2H4z" /></svg>
+                                </button>
+                            </div>
+                        </div>
+
                         <ThemeSwitcher currentTheme={currentTheme} onThemeChange={setCurrentTheme} />
                         <LogoUploader currentLogo={logoUrl} onLogoChange={(url) => setLogoUrl(url || '/logo.png')} onError={showModal} />
                         <CollapsibleSection title="Backup e Restauração">
                             <BackupRestore onExport={handleExportData} onImport={handleImportData} onError={showModal} />
                         </CollapsibleSection>
-                         <CollapsibleSection title="Gerenciar Usuários">
-                            <UserManagement showToast={showToast} showModal={showModal} />
+                         <CollapsibleSection title="Gerenciar Profissionais">
+                            <UserManagement showToast={showToast} showModal={showModal} services={services} professionals={professionals} onUsersChange={setProfessionals} />
                         </CollapsibleSection>
                         <CollapsibleSection title="Notificações Push">
                             <NotificationManager />
@@ -447,8 +566,10 @@ const App: React.FC = () => {
                     logoUrl={logoUrl} 
                     headerStyle={headerStyle}
                     notificationAppointments={notificationAppointments}
+                    bookingRequests={appointmentRequests}
                     isNotificationPopoverOpen={isNotificationPopoverOpen}
                     onToggleNotificationPopover={() => setIsNotificationPopoverOpen(prev => !prev)}
+                    onOpenBookingRequestModal={() => setIsBookingRequestModalOpen(true)}
                     currentUser={currentUser}
                     onLogout={handleLogout}
                 />
@@ -457,9 +578,9 @@ const App: React.FC = () => {
             {/* Navigation */}
             <nav className="flex justify-center bg-white/50 backdrop-blur-sm shadow-md sticky top-0 z-30">
                 {([
-                    { label: 'Agenda', view: 'agenda' }, 
-                    { label: 'Calendário', view: 'calendar' }, 
+                    { label: 'Agenda', view: 'agenda' },
                     { label: 'Clientes', view: 'clients' }, 
+                    { label: 'Financeiro', view: 'financeiro' },
                     { label: 'Serviços', view: 'services' }, 
                     { label: 'Configurações', view: 'settings' }
                 ] as const).map(item => (
@@ -478,11 +599,13 @@ const App: React.FC = () => {
             </nav>
             
             <main className="p-4 sm:p-8">
-                {renderActiveView()}
+                <div key={activeView} className="animate-view-in">
+                    {renderActiveView()}
+                </div>
             </main>
 
             {/* Floating Action Button */}
-            {!['settings', 'services'].includes(activeView) && !isFormVisible && !isClientFormVisible && (
+            {!['settings', 'services', 'financeiro'].includes(activeView) && !isFormVisible && !isClientFormVisible && (
                 <button
                     onClick={() => handleOpenForm(null)}
                     className="fab"
@@ -507,6 +630,9 @@ const App: React.FC = () => {
                         onMarkAsDelayed={handleMarkAsDelayed}
                         services={services}
                         clients={clients}
+                        onViewClientHistory={handleViewClientHistory}
+                        professionals={professionalsList}
+                        currentUser={currentUser}
                     />
                 }
             </div>
@@ -521,6 +647,15 @@ const App: React.FC = () => {
                     />
                 }
             </div>
+            
+            <BookingRequestManager
+                isOpen={isBookingRequestModalOpen}
+                onClose={() => setIsBookingRequestModalOpen(false)}
+                requests={appointmentRequests}
+                professionals={professionalsList}
+                onApprove={handleApproveRequest}
+                onReject={handleRejectRequest}
+            />
 
             <Modal {...modalInfo} onClose={() => setModalInfo({ ...modalInfo, isOpen: false })} />
             

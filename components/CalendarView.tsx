@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Appointment, BlockedSlot } from '../types';
+import { Appointment, BlockedSlot, Professional } from '../types';
 import { TIMES, MONTHS } from '../constants';
 
 type ViewType = 'month' | 'week' | 'day' | 'agenda';
@@ -8,6 +8,9 @@ interface CalendarViewProps {
     appointments: Appointment[];
     blockedSlots: BlockedSlot[];
     onEditAppointment: (appointment: Appointment) => void;
+    newlyAddedAppointmentId?: number | null;
+    professionals: Professional[];
+    currentUser: Professional;
 }
 
 const useWindowSize = () => {
@@ -23,16 +26,30 @@ const useWindowSize = () => {
     return size;
 };
 
-const CalendarView: React.FC<CalendarViewProps> = ({ appointments, blockedSlots, onEditAppointment }) => {
+const getInitials = (name: string) => {
+    const names = name.split(' ');
+    if (names.length === 1) return name.substring(0, 2).toUpperCase();
+    return (names[0][0] + names[names.length - 1][0]).toUpperCase();
+};
+
+const CalendarView: React.FC<CalendarViewProps> = ({ appointments, blockedSlots, onEditAppointment, newlyAddedAppointmentId, professionals, currentUser }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [width] = useWindowSize();
     const isMobile = width < 640; // sm breakpoint
 
     const [view, setView] = useState<ViewType>(isMobile ? 'agenda' : 'month');
-    
-    useEffect(() => {
+    const [professionalFilter, setProfessionalFilter] = useState<string>(currentUser.role === 'admin' ? 'all' : currentUser.username);
+
+     useEffect(() => {
         setView(isMobile ? 'agenda' : 'month');
     }, [isMobile]);
+
+    const filteredAppointments = useMemo(() => {
+        if (professionalFilter === 'all') {
+            return appointments;
+        }
+        return appointments.filter(a => a.professionalUsername === professionalFilter);
+    }, [appointments, professionalFilter]);
 
     const changeDate = (amount: number, unit: 'day' | 'week' | 'month') => {
         let newDate = new Date(currentDate);
@@ -65,17 +82,25 @@ const CalendarView: React.FC<CalendarViewProps> = ({ appointments, blockedSlots,
     
     const renderView = () => {
         // Using a key that changes with the view ensures the animation re-triggers.
-        const animationKey = `${view}-${currentDate.getTime()}`;
+        const animationKey = `${view}-${currentDate.getTime()}-${professionalFilter}`;
+        const commonViewProps = {
+            date: currentDate,
+            appointments: filteredAppointments,
+            blockedSlots,
+            onEditAppointment,
+            newlyAddedAppointmentId,
+            professionals,
+        };
 
         switch (view) {
             case 'month':
-                return <div key={animationKey} className="animate-view-in"><MonthView date={currentDate} appointments={appointments} blockedSlots={blockedSlots} onDayClick={handleDayClick} onEditAppointment={onEditAppointment} /></div>;
+                return <div key={animationKey} className="animate-view-in"><MonthView {...commonViewProps} onDayClick={handleDayClick} /></div>;
             case 'week':
-                return <div key={animationKey} className="animate-view-in"><WeekView date={currentDate} appointments={appointments} blockedSlots={blockedSlots} onEditAppointment={onEditAppointment} /></div>;
+                return <div key={animationKey} className="animate-view-in"><WeekView {...commonViewProps} /></div>;
             case 'day':
-                return <div key={animationKey} className="animate-view-in"><DayView date={currentDate} appointments={appointments} blockedSlots={blockedSlots} onEditAppointment={onEditAppointment} /></div>;
+                return <div key={animationKey} className="animate-view-in"><DayView {...commonViewProps} /></div>;
             case 'agenda':
-                 return <div key={animationKey} className="animate-view-in"><AgendaListView date={currentDate} appointments={appointments} blockedSlots={blockedSlots} onEditAppointment={onEditAppointment} /></div>;
+                 return <div key={animationKey} className="animate-view-in"><AgendaListView {...commonViewProps} /></div>;
             default:
                 return null;
         }
@@ -107,6 +132,21 @@ const CalendarView: React.FC<CalendarViewProps> = ({ appointments, blockedSlots,
                     ))}
                 </div>
             </div>
+             {/* Professional Filter - Only for Admins */}
+             {currentUser.role === 'admin' && professionals.length > 1 && (
+                <div className="mb-4 flex justify-center sm:justify-end">
+                    <select
+                        value={professionalFilter}
+                        onChange={(e) => setProfessionalFilter(e.target.value)}
+                        className="h-10 px-3 py-2 bg-white border border-[var(--border)] rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                    >
+                        <option value="all">Todas as Profissionais</option>
+                        {professionals.map(p => (
+                            <option key={p.username} value={p.username}>{p.name}</option>
+                        ))}
+                    </select>
+                </div>
+            )}
             {/* Calendar Body */}
             <div className="flex-grow overflow-y-auto">{renderView()}</div>
         </div>
@@ -116,7 +156,17 @@ const CalendarView: React.FC<CalendarViewProps> = ({ appointments, blockedSlots,
 
 // #region Sub-Components (Month, Week, Day, Agenda Views)
 
-const AgendaListView: React.FC<{ date: Date, appointments: Appointment[], blockedSlots: BlockedSlot[], onEditAppointment: (a: Appointment) => void }> = ({ date, appointments, blockedSlots, onEditAppointment }) => {
+interface ViewProps {
+    date: Date;
+    appointments: Appointment[];
+    blockedSlots: BlockedSlot[];
+    onEditAppointment: (a: Appointment) => void;
+    newlyAddedAppointmentId?: number | null;
+    professionals: Professional[];
+}
+
+
+const AgendaListView: React.FC<ViewProps> = ({ date, appointments, blockedSlots, onEditAppointment, newlyAddedAppointmentId, professionals }) => {
     const startOfWeek = new Date(date);
     startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
     const weekDays = Array.from({ length: 7 }).map((_, i) => new Date(startOfWeek.getFullYear(), startOfWeek.getMonth(), startOfWeek.getDate() + i));
@@ -175,16 +225,27 @@ const AgendaListView: React.FC<{ date: Date, appointments: Appointment[], blocke
                                     );
                                 }
                                 const appt = event as Appointment;
+                                const professional = professionals.find(p => p.username === appt.professionalUsername);
+                                const isNew = appt.id === newlyAddedAppointmentId;
                                 const borderColor = appt.status === 'delayed' ? 'border-[var(--warning)]' : 'border-[var(--primary)]';
                                 return (
-                                    <div key={appt.id} onClick={() => onEditAppointment(appt)} className={`flex items-center gap-4 p-3 bg-white hover:bg-[var(--highlight)] cursor-pointer border-l-4 ${borderColor} rounded-r-lg shadow-sm`}>
+                                    <div 
+                                        key={appt.id} 
+                                        onClick={() => onEditAppointment(appt)} 
+                                        className={`flex items-center gap-4 p-3 bg-white hover:bg-[var(--highlight)] cursor-pointer border-l-4 ${borderColor} rounded-r-lg shadow-sm ${isNew ? 'animate-new-item' : ''}`}
+                                    >
                                         <div className="font-semibold text-[var(--text-dark)] w-20 text-center">
                                              {appt.datetime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                                         </div>
-                                        <div>
+                                        <div className="flex-grow">
                                             <p className="font-bold text-[var(--text-dark)]">{appt.clientName}</p>
                                             <p className="text-sm text-[var(--secondary)]">{appt.services.map(s => s.name).join(', ')}</p>
                                         </div>
+                                        {professional && (
+                                            <div className="w-8 h-8 flex-shrink-0 bg-[var(--secondary)] text-white text-xs font-bold rounded-full flex items-center justify-center" title={professional.name}>
+                                                {getInitials(professional.name)}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -197,7 +258,7 @@ const AgendaListView: React.FC<{ date: Date, appointments: Appointment[], blocke
 };
 
 
-const MonthView: React.FC<{ date: Date, appointments: Appointment[], blockedSlots: BlockedSlot[], onDayClick: (day: Date) => void, onEditAppointment: (a: Appointment) => void }> = ({ date, appointments, blockedSlots, onDayClick, onEditAppointment }) => {
+const MonthView: React.FC<ViewProps & { onDayClick: (day: Date) => void }> = ({ date, appointments, blockedSlots, onDayClick, onEditAppointment, newlyAddedAppointmentId, professionals }) => {
     const calendarDays = useMemo(() => {
         const year = date.getFullYear();
         const month = date.getMonth();
@@ -232,11 +293,14 @@ const MonthView: React.FC<{ date: Date, appointments: Appointment[], blockedSlot
                             {isBlocked && <div className="text-xs text-red-600 font-bold mt-1">Bloqueado</div>}
                             <div className="mt-1 space-y-1">
                                 {dayAppointments.slice(0, 3).map(a => {
+                                     const isNew = a.id === newlyAddedAppointmentId;
+                                     const professional = professionals.find(p => p.username === a.professionalUsername);
                                      const bgColor = a.status === 'delayed' ? 'bg-[var(--warning)]' : 'bg-[var(--primary)]';
                                      const hoverBgColor = a.status === 'delayed' ? 'hover:bg-amber-600' : 'hover:bg-[var(--primary-hover)]';
                                      return (
-                                        <div key={a.id} onClick={(e) => { e.stopPropagation(); onEditAppointment(a); }} className={`appointment-pill ${bgColor} ${hoverBgColor}`}>
-                                            {a.clientName}
+                                        <div key={a.id} onClick={(e) => { e.stopPropagation(); onEditAppointment(a); }} className={`flex items-center gap-1.5 appointment-pill ${bgColor} ${hoverBgColor} ${isNew ? 'animate-new-item' : ''}`}>
+                                            {professional && <span className="text-xs font-bold opacity-75">{getInitials(professional.name)}</span>}
+                                            <span className="truncate flex-grow">{a.clientName}</span>
                                         </div>
                                      );
                                 })}
@@ -252,7 +316,7 @@ const MonthView: React.FC<{ date: Date, appointments: Appointment[], blockedSlot
     );
 };
 
-const TimelineView: React.FC<{ date: Date, appointments: Appointment[], blockedSlots: BlockedSlot[], onEditAppointment: (a: Appointment) => void }> = ({ date, appointments, blockedSlots, onEditAppointment }) => {
+const TimelineView: React.FC<ViewProps> = ({ date, appointments, blockedSlots, onEditAppointment, newlyAddedAppointmentId, professionals }) => {
     const dayAppointments = appointments
         .filter(a => new Date(a.datetime).toDateString() === date.toDateString() && !['completed', 'cancelled'].includes(a.status))
         .sort((a, b) => a.datetime.getTime() - b.datetime.getTime());
@@ -300,16 +364,21 @@ const TimelineView: React.FC<{ date: Date, appointments: Appointment[], blockedS
             })}
             {dayAppointments.map(a => {
                 const { top, height } = getPositionAndHeight(a.datetime, a.endTime);
+                const professional = professionals.find(p => p.username === a.professionalUsername);
+                const isNew = a.id === newlyAddedAppointmentId;
                 const bgColor = a.status === 'delayed' ? 'bg-[var(--warning)]' : 'bg-[var(--primary)]';
                 return (
                     <div
                         key={a.id}
                         onClick={() => onEditAppointment(a)}
-                        className={`absolute w-[95%] left-[2.5%] p-2 rounded-md ${bgColor} text-white text-xs z-10 shadow-lg cursor-pointer opacity-90 hover:opacity-100 transition-opacity`}
+                        className={`absolute w-[95%] left-[2.5%] p-2 rounded-md ${bgColor} text-white text-xs z-10 shadow-lg cursor-pointer opacity-90 hover:opacity-100 transition-opacity flex flex-col justify-start ${isNew ? 'animate-new-item' : ''}`}
                         style={{ top: `${top}px`, height: `${height}px` }}
                         title={`${a.clientName} - ${a.services.map(s => s.name).join(', ')}`}
                     >
-                        <p className="font-bold">{a.clientName}</p>
+                        <div className="flex justify-between items-start">
+                             <p className="font-bold flex-grow">{a.clientName}</p>
+                             {professional && <span className="text-xs font-bold opacity-75 flex-shrink-0" title={professional.name}>{getInitials(professional.name)}</span>}
+                        </div>
                         <p className="truncate">{a.services.map(s => s.name).join(', ')}</p>
                     </div>
                 );
@@ -318,15 +387,15 @@ const TimelineView: React.FC<{ date: Date, appointments: Appointment[], blockedS
     );
 };
 
-const DayView: React.FC<{ date: Date, appointments: Appointment[], blockedSlots: BlockedSlot[], onEditAppointment: (a: Appointment) => void }> = ({ date, appointments, blockedSlots, onEditAppointment }) => {
+const DayView: React.FC<ViewProps> = ({ date, appointments, blockedSlots, onEditAppointment, newlyAddedAppointmentId, professionals }) => {
     return (
         <div className="pl-14 py-4">
-             <TimelineView date={date} appointments={appointments} blockedSlots={blockedSlots} onEditAppointment={onEditAppointment} />
+             <TimelineView date={date} appointments={appointments} blockedSlots={blockedSlots} onEditAppointment={onEditAppointment} newlyAddedAppointmentId={newlyAddedAppointmentId} professionals={professionals} />
         </div>
     );
 };
 
-const WeekView: React.FC<{ date: Date, appointments: Appointment[], blockedSlots: BlockedSlot[], onEditAppointment: (a: Appointment) => void }> = ({ date, appointments, blockedSlots, onEditAppointment }) => {
+const WeekView: React.FC<ViewProps> = ({ date, appointments, blockedSlots, onEditAppointment, newlyAddedAppointmentId, professionals }) => {
     const startOfWeek = new Date(date);
     startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
     const weekDays = Array.from({ length: 7 }).map((_, i) => new Date(startOfWeek.getFullYear(), startOfWeek.getMonth(), startOfWeek.getDate() + i));
@@ -349,7 +418,7 @@ const WeekView: React.FC<{ date: Date, appointments: Appointment[], blockedSlots
             <div className="grid grid-cols-7 flex-grow">
                 {weekDays.map(day => (
                     <div key={day.toISOString()} className="border-l border-[var(--border)] relative pl-14">
-                        <TimelineView date={day} appointments={appointments} blockedSlots={blockedSlots} onEditAppointment={onEditAppointment} />
+                        <TimelineView date={day} appointments={appointments} blockedSlots={blockedSlots} onEditAppointment={onEditAppointment} newlyAddedAppointmentId={newlyAddedAppointmentId} professionals={professionals} />
                     </div>
                 ))}
             </div>

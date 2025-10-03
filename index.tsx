@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import PublicBookingPage from './components/PublicBookingPage';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -8,9 +9,19 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
+
+const renderApp = () => {
+    const path = window.location.pathname;
+    if (path.startsWith('/agendar')) {
+        return <PublicBookingPage />;
+    }
+    return <App />;
+};
+
+
 root.render(
   <React.StrictMode>
-    <App />
+    {renderApp()}
   </React.StrictMode>
 );
 
