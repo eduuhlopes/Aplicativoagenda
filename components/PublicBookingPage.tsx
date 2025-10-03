@@ -190,7 +190,7 @@ const PublicBookingPage: React.FC = () => {
          <div className="animate-view-in">
             <h2 className="text-2xl font-bold text-center text-[var(--text-dark)] mb-4">Escolha uma profissional</h2>
             <div className="space-y-4">
-                {professionalsList.filter(prof => prof.role !== 'admin' && prof.assignedServices.length > 0).map(prof => (
+                {professionalsList.filter(prof => prof.role !== 'admin').map(prof => (
                     <button key={prof.username} onClick={() => handleSelectProfessional(prof)} className="w-full flex items-center gap-4 p-4 bg-white border border-[var(--border)] rounded-lg shadow-sm text-left hover:border-[var(--primary)] hover:shadow-md transition-all">
                         {prof.avatarUrl ? (
                             <img src={prof.avatarUrl} alt={prof.name} className="h-16 w-16 rounded-full object-cover flex-shrink-0" />
