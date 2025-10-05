@@ -18,8 +18,8 @@ export const DAYS: string[] = Array.from({ length: 31 }, (_, i) => String(i + 1)
 
 export const YEARS: string[] = [String(new Date().getFullYear()), String(new Date().getFullYear() + 1)];
 
-// Horários das 07:00 às 20:00, com intervalos de 30 minutos
-export const TIMES: string[] = Array.from({ length: (20 - 7) * 2 + 1 }, (_, i) => {
+// Horários das 07:00 às 23:00, com intervalos de 30 minutos
+export const TIMES: string[] = Array.from({ length: (23 - 7) * 2 + 1 }, (_, i) => {
     const totalMinutes = (i * 30) + (7 * 60); // Start at 7:00 (420 minutes)
     const hour = Math.floor(totalMinutes / 60);
     const minute = totalMinutes % 60;

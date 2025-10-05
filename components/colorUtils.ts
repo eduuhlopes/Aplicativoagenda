@@ -60,3 +60,17 @@ export const generateGradient = (r: number, g: number, b: number): string => {
     const { r: r2, g: g2, b: b2 } = darkenColor(r, g, b, 30);
     return `linear-gradient(135deg, rgb(${r}, ${g}, ${b}) 0%, rgb(${r2}, ${g2}, ${b2}) 100%)`;
 };
+
+/**
+ * Converte uma cor hexadecimal para um objeto RGB.
+ * @param hex A string da cor hexadecimal (e.g., '#FF5733').
+ * @returns Um objeto { r, g, b } ou null se a string for inválida.
+ */
+export const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16)
+  } : null;
+};

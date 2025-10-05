@@ -18,17 +18,24 @@ import LogoUploader from './components/LogoUploader';
 import NotificationManager from './components/NotificationManager';
 import UserManagement from './components/UserManagement';
 import BookingRequestManager from './components/BookingRequestManager';
+import DateTimePickerModal from './components/DateTimePickerModal';
 
 
 // Utils, Types, and Constants
-import { getAverageColor, getContrastColor, generateGradient } from './components/colorUtils';
+import { getAverageColor, getContrastColor, generateGradient, hexToRgb } from './components/colorUtils';
 // FIX: Imported StoredProfessional type to correctly type the 'professionals' state.
 import { Appointment, Client, Professional, BlockedSlot, Service, MonthlyPackage, EnrichedClient, ModalInfo, AppointmentStatus, FinancialData, StoredProfessional } from './types';
 import { SERVICES } from './constants';
 
 const PlusIcon: React.FC<{className?: string}> = ({ className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-5 w-5 mr-2"} viewBox="0 0 20 20" fill="currentColor">
-      <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+    <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-5 w-5 mr-2"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+    </svg>
+);
+
+const BlockTimeIcon: React.FC<{className?: string}> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-5 w-5 mr-2"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2zM16 14.5l-8-8" />
     </svg>
 );
 
@@ -93,6 +100,7 @@ const App: React.FC = () => {
     const [isFormVisible, setIsFormVisible] = useState(false);
     const [isClientFormVisible, setIsClientFormVisible] = useState(false);
     const [isBookingRequestModalOpen, setIsBookingRequestModalOpen] = useState(false);
+    const [isBlockerModalOpen, setIsBlockerModalOpen] = useState(false);
     const [appointmentToEdit, setAppointmentToEdit] = useState<Appointment | null>(null);
     const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
     const [modalInfo, setModalInfo] = useState<ModalInfo>({ isOpen: false, title: '', message: '' });
@@ -115,47 +123,71 @@ const App: React.FC = () => {
         }
     }, []);
     
-    // Apply theme and generate header style from logo
+    // Helper to generate lighter/darker shades for CSS variables.
+    const adjustRgbColor = (color: {r: number, g: number, b: number}, amount: number) => {
+        const clamp = (val: number) => Math.max(0, Math.min(255, val));
+        return `rgb(${clamp(color.r + amount)}, ${clamp(color.g + amount)}, ${clamp(color.b + amount)})`;
+    };
+
+    // Apply theme based on user profile color or global theme setting
     useEffect(() => {
-        document.documentElement.setAttribute('data-theme', currentTheme);
-        
-        const setFallbackHeader = () => {
-            const theme = themes.find(t => t.name === currentTheme);
-            const primaryColor = theme ? theme.color : '#C77D93'; // Default pink
+        const root = document.documentElement;
+
+        const applyDynamicTheme = (hexColor: string) => {
+            const rgb = hexToRgb(hexColor);
+            if (!rgb) {
+                applyStaticTheme(currentTheme); // Fallback if color is invalid
+                return;
+            }
+
+            // Set CSS variables for a cohesive theme
+            root.style.setProperty('--primary', hexColor);
+            root.style.setProperty('--primary-light', adjustRgbColor(rgb, 30));
+            root.style.setProperty('--primary-hover', adjustRgbColor(rgb, -20));
+            root.style.setProperty('--accent', adjustRgbColor(rgb, 30));
+
+            // Remove data-theme to ensure our variables take precedence
+            root.removeAttribute('data-theme');
             
-            const r = parseInt(primaryColor.slice(1, 3), 16);
-            const g = parseInt(primaryColor.slice(3, 5), 16);
-            const b = parseInt(primaryColor.slice(5, 7), 16);
-            
+            // Set header style (which can use a gradient)
             setHeaderStyle({
-                background: generateGradient(r, g, b),
-                color: getContrastColor(r, g, b),
-                notificationBg: `rgba(${Math.max(0, r-20)}, ${Math.max(0, g-20)}, ${Math.max(0, b-20)}, 0.5)`
+                background: generateGradient(rgb.r, rgb.g, rgb.b),
+                color: getContrastColor(rgb.r, rgb.g, rgb.b),
+                notificationBg: `rgba(${Math.max(0, rgb.r - 20)}, ${Math.max(0, rgb.g - 20)}, ${Math.max(0, rgb.b - 20)}, 0.5)`
             });
         };
 
-        if (!logoUrl) {
-            console.warn('logoUrl is not set, using fallback header style.');
-            setFallbackHeader();
-            return;
+        const applyStaticTheme = (themeName: string) => {
+            // Clear any dynamically set properties
+            root.style.removeProperty('--primary');
+            root.style.removeProperty('--primary-light');
+            root.style.removeProperty('--primary-hover');
+            root.style.removeProperty('--accent');
+            
+            // Set the theme using the pre-defined class
+            root.setAttribute('data-theme', themeName);
+
+            // Set the header based on the theme's primary color
+            const theme = themes.find(t => t.name === themeName);
+            const primaryColor = theme ? theme.color : '#C77D93';
+            const rgb = hexToRgb(primaryColor);
+            if (rgb) {
+                setHeaderStyle({
+                    background: generateGradient(rgb.r, rgb.g, rgb.b),
+                    color: getContrastColor(rgb.r, rgb.g, rgb.b),
+                    notificationBg: `rgba(${Math.max(0, rgb.r - 20)}, ${Math.max(0, rgb.g - 20)}, ${Math.max(0, rgb.b - 20)}, 0.5)`
+                });
+            }
+        };
+
+        // Priority: Professional Color > Global Theme
+        if (currentUser?.color) {
+            applyDynamicTheme(currentUser.color);
+        } else {
+            applyStaticTheme(currentTheme);
         }
 
-        getAverageColor(logoUrl)
-            .then(color => {
-                const contrastColor = getContrastColor(color.r, color.g, color.b);
-                const notificationBg = `rgba(${Math.max(0, color.r - 20)}, ${Math.max(0, color.g - 20)}, ${Math.max(0, color.b - 20)}, 0.5)`;
-                setHeaderStyle({
-                    background: generateGradient(color.r, color.g, color.b),
-                    color: contrastColor,
-                    notificationBg: notificationBg,
-                });
-            })
-            .catch(err => {
-                // This is a handled error (e.g., invalid logo URL), so we just apply the fallback.
-                // Logging it as an error can be alarming when the app functions as intended.
-                setFallbackHeader();
-            });
-    }, [currentTheme, logoUrl]);
+    }, [currentTheme, currentUser]);
     
     // --- DERIVED STATE & MEMOS ---
     
@@ -411,6 +443,19 @@ const App: React.FC = () => {
         showToast('Serviço atualizado com sucesso!', 'success');
     }, [setServices, showToast]);
 
+    const handleBlockSlot = useCallback((data: { date: Date, isFullDay?: boolean, startTime?: string, endTime?: string }) => {
+        const newBlockedSlot: BlockedSlot = {
+            id: Date.now(),
+            date: data.date,
+            isFullDay: data.isFullDay ?? false,
+            startTime: data.startTime,
+            endTime: data.endTime,
+        };
+        setBlockedSlots(prev => [...prev, newBlockedSlot]);
+        showToast('Horário bloqueado com sucesso!', 'success');
+        setIsBlockerModalOpen(false);
+    }, [setBlockedSlots, showToast]);
+
     // Booking Request Handlers
     const handleApproveRequest = useCallback((requestToApprove: Appointment) => {
         // Change status to 'scheduled' and add to main appointments
@@ -492,15 +537,24 @@ const App: React.FC = () => {
             case 'agenda':
                 return (
                     <div>
-                        <div className="flex justify-between items-center mb-6">
+                        <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-2">
                             <h2 className="text-3xl font-bold text-[var(--text-dark)]">Agenda</h2>
-                            <button
-                                onClick={() => handleOpenForm(null)}
-                                className="hidden sm:flex items-center px-6 py-3 bg-[var(--primary)] text-white font-bold rounded-lg shadow-md hover:bg-[var(--primary-hover)] transition-transform transform hover:scale-105 active:scale-95"
-                            >
-                                <PlusIcon />
-                                Novo Agendamento
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setIsBlockerModalOpen(true)}
+                                    className="flex items-center px-4 py-2 bg-white border border-[var(--border)] text-[var(--secondary)] font-bold rounded-lg shadow-sm hover:bg-[var(--highlight)] transition-all active:scale-95"
+                                >
+                                    <BlockTimeIcon />
+                                    Bloquear Horário
+                                </button>
+                                <button
+                                    onClick={() => handleOpenForm(null)}
+                                    className="flex items-center px-4 py-2 bg-[var(--primary)] text-white font-bold rounded-lg shadow-md hover:bg-[var(--primary-hover)] transition-transform transform hover:scale-105 active:scale-95"
+                                >
+                                    <PlusIcon />
+                                    Agendamento
+                                </button>
+                            </div>
                         </div>
                         <CalendarView 
                             appointments={appointments} 
@@ -622,9 +676,9 @@ const App: React.FC = () => {
             {/* Floating Action Button */}
             {!['settings', 'services', 'financeiro'].includes(activeView) && !isFormVisible && !isClientFormVisible && (
                 <button
-                    onClick={() => handleOpenForm(null)}
+                    onClick={() => activeView === 'clients' ? handleOpenClientForm(null) : handleOpenForm(null)}
                     className="fab"
-                    aria-label="Novo Agendamento"
+                    aria-label={activeView === 'clients' ? "Nova Cliente" : "Novo Agendamento"}
                 >
                     <PlusIcon className="h-8 w-8" />
                 </button>
@@ -670,6 +724,14 @@ const App: React.FC = () => {
                 professionals={professionalsList}
                 onApprove={handleApproveRequest}
                 onReject={handleRejectRequest}
+            />
+
+            <DateTimePickerModal
+                isOpen={isBlockerModalOpen}
+                onClose={() => setIsBlockerModalOpen(false)}
+                onConfirm={handleBlockSlot}
+                showBlockDayToggle={true}
+                blockedSlots={blockedSlots}
             />
 
             <Modal {...modalInfo} onClose={() => setModalInfo({ ...modalInfo, isOpen: false })} />

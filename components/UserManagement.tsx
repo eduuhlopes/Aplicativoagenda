@@ -126,6 +126,16 @@ const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, show
     
     const [userToDelete, setUserToDelete] = useState<string | null>(null);
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+    const [selectAllServices, setSelectAllServices] = useState(false);
+
+    // Effect to manage the state of the "select all" checkbox
+    useEffect(() => {
+        if (services.length > 0 && formAssignedServices.length === services.length) {
+            setSelectAllServices(true);
+        } else {
+            setSelectAllServices(false);
+        }
+    }, [formAssignedServices, services.length]);
 
     const resetForm = () => {
         setFormUsername('');
@@ -252,6 +262,17 @@ const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, show
         );
     };
 
+    const handleSelectAllServices = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const isChecked = e.target.checked;
+        setSelectAllServices(isChecked);
+        if (isChecked) {
+            setFormAssignedServices(services.map(s => s.name));
+        } else {
+            setFormAssignedServices([]);
+        }
+    };
+
+
     const inputClasses = "w-full h-11 px-3 py-2 bg-[var(--highlight)] border border-[var(--border)] rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-[var(--accent)] transition disabled:opacity-50 disabled:bg-gray-200";
 
     return (
@@ -277,7 +298,18 @@ const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, show
                 
                 <div className="flex items-center gap-4">
                     <div className="flex-grow">
-                        <label className="block text-sm font-medium text-[var(--text-dark)] mb-2">Serviços que realiza:</label>
+                        <div className="flex justify-between items-center mb-2">
+                            <label className="block text-sm font-medium text-[var(--text-dark)]">Serviços que realiza:</label>
+                            <label className="flex items-center space-x-2 text-sm cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={selectAllServices}
+                                    onChange={handleSelectAllServices}
+                                    className="h-4 w-4 rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary-hover)]"
+                                />
+                                <span>Selecionar Todos</span>
+                            </label>
+                        </div>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 bg-white rounded-lg border border-[var(--border)] max-h-32 overflow-y-auto">
                             {services.map(service => (
                                 <label key={service.name} className="flex items-center space-x-2 text-sm">

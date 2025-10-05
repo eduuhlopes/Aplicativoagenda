@@ -124,24 +124,20 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
         const selectedProfessional = professionals.find(p => p.username === professionalUsername);
         const dayOfWeek = selectedDay.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
-        // Determine if a schedule is configured. It's configured if it's not undefined and has keys.
         const schedule = selectedProfessional?.workSchedule;
         const isScheduleConfigured = schedule && Object.keys(schedule).length > 0;
         const workDay = schedule?.[dayOfWeek];
 
         if (isScheduleConfigured && !workDay) {
-            // A schedule is set up, but this day is not in it or is null, so it's a day off.
             return [];
         }
 
-        // Use the specific work day hours, or fallback to the full day if no schedule is configured.
         const workStartTime = workDay?.start || '07:00';
         const workEndTime = workDay?.end || '20:00';
 
         const dayStr = selectedDay.toDateString();
         const busySlots = new Set<string>();
 
-        // Mark busy slots from blocked periods
         blockedSlots.forEach(slot => {
             if (new Date(slot.date).toDateString() !== dayStr) return;
             if (slot.isFullDay) {
@@ -159,10 +155,8 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
             }
         });
 
-        // Mark busy slots from appointments
         appointments.forEach(appt => {
             if (appt.id === editingAppointmentId) return;
-            // Consider appointments of the selected professional
             if (appt.professionalUsername !== professionalUsername) return;
             if (new Date(appt.datetime).toDateString() !== dayStr) return;
 
@@ -181,30 +175,42 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
         const availableStartTimes: string[] = [];
         const slotsNeeded = Math.ceil((totalDuration || 30) / 30);
         
+        const [endWorkH, endWorkM] = workEndTime.split(':').map(Number);
+        const workEndTimeInMinutes = endWorkH * 60 + endWorkM;
+        
         const today = new Date();
         const isTodaySelected = selectedDay.toDateString() === today.toDateString();
 
-        for (let i = 0; i <= TIMES.length - slotsNeeded; i++) {
+        for (let i = 0; i < TIMES.length; i++) {
             const startTimeCandidate = TIMES[i];
-            
-            // Check if within working hours
-            const endTimeCandidate = TIMES[i + slotsNeeded -1];
-            if (startTimeCandidate < workStartTime || endTimeCandidate >= workEndTime) {
+
+            if (startTimeCandidate < workStartTime) {
                 continue;
             }
 
+            const [h, m] = startTimeCandidate.split(':').map(Number);
+            const startTimeInMinutes = h * 60 + m;
+            const endTimeInMinutes = startTimeInMinutes + (totalDuration || 30);
+
+            if (endTimeInMinutes > workEndTimeInMinutes) {
+                break;
+            }
+
             if (isTodaySelected) {
-                const [h, m] = startTimeCandidate.split(':').map(Number);
                 const candidateDate = new Date();
                 candidateDate.setHours(h, m, 0, 0);
                 if (candidateDate < today) continue;
             }
 
             let isSequenceAvailable = true;
-            for (let j = 0; j < slotsNeeded; j++) {
-                if (busySlots.has(TIMES[i + j])) {
-                    isSequenceAvailable = false;
-                    break;
+            if (i + slotsNeeded > TIMES.length) {
+                isSequenceAvailable = false;
+            } else {
+                for (let j = 0; j < slotsNeeded; j++) {
+                    if (busySlots.has(TIMES[i + j])) {
+                        isSequenceAvailable = false;
+                        break;
+                    }
                 }
             }
 
@@ -212,7 +218,6 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
                 availableStartTimes.push(startTimeCandidate);
             }
         }
-
         return availableStartTimes;
     }, [selectedDay, blockedSlots, appointments, totalDuration, editingAppointmentId, professionals, professionalUsername]);
 

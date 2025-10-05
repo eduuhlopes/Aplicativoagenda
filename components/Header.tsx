@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Appointment, Professional } from '../types';
 
 interface HeaderProps {
@@ -12,6 +12,16 @@ interface HeaderProps {
     currentUser: Professional | null;
     onLogout: () => void;
 }
+
+const inspirationalQuotes = [
+    "A beleza começa no momento em que você decide ser você mesma.",
+    "Cuide-se como se fosse de ouro. E é.",
+    "Sua beleza é a sua própria obra de arte.",
+    "A maior elegância é a simplicidade.",
+    "Invista em você. É o melhor investimento que você pode fazer.",
+    "Ser bonita significa ser você mesma. Você não precisa ser aceita pelos outros.",
+    "A autoconfiança é o melhor look."
+];
 
 const formatRelativeDateTime = (date: Date): string => {
     const now = new Date();
@@ -44,6 +54,28 @@ const InboxIcon = () => (
 
 
 const Header: React.FC<HeaderProps> = ({ logoUrl, headerStyle, notificationAppointments, bookingRequests, isNotificationPopoverOpen, onToggleNotificationPopover, onOpenBookingRequestModal, currentUser, onLogout }) => {
+    const [quote, setQuote] = useState('');
+    const [isQuoteVisible, setIsQuoteVisible] = useState(true);
+    
+    useEffect(() => {
+        // Set initial quote
+        setQuote(inspirationalQuotes[Math.floor(Math.random() * inspirationalQuotes.length)]);
+
+        const quoteInterval = setInterval(() => {
+            setIsQuoteVisible(false); // Start fade out
+            setTimeout(() => {
+                let nextQuote;
+                do {
+                    nextQuote = inspirationalQuotes[Math.floor(Math.random() * inspirationalQuotes.length)];
+                } while (nextQuote === quote); // Avoid showing the same quote twice in a row
+                setQuote(nextQuote);
+                setIsQuoteVisible(true); // Start fade in
+            }, 500); // Wait for fade out animation
+        }, 10000); // 10 seconds
+
+        return () => clearInterval(quoteInterval);
+    }, [quote]); // Dependency on quote to avoid stale state in closure
+
     const headerDynamicStyle = headerStyle ? { background: headerStyle.background, color: headerStyle.color } : {};
     const textAndIconDynamicStyle = headerStyle ? { color: headerStyle.color, textShadow: '1px 1px 3px rgba(0,0,0,0.2)' } : {};
     const buttonDynamicStyle = headerStyle ? {
@@ -63,7 +95,7 @@ const Header: React.FC<HeaderProps> = ({ logoUrl, headerStyle, notificationAppoi
                 <img src={logoUrl} alt="Spaço Delas Logo" className="h-16 w-16 rounded-full object-cover border-2 border-white/50 shadow-lg" />
                 <div className="text-left">
                     <h1 
-                        className="font-brand text-5xl md:text-6xl font-bold"
+                        className="font-brand text-4xl sm:text-5xl md:text-6xl font-bold animate-brand-glow"
                         style={textAndIconDynamicStyle}
                     >
                         Spaço Delas
@@ -73,6 +105,12 @@ const Header: React.FC<HeaderProps> = ({ logoUrl, headerStyle, notificationAppoi
                         style={textAndIconDynamicStyle}
                     >
                         Olá, {currentUser?.name || 'Usuário'}
+                    </p>
+                    <p 
+                        className={`text-sm mt-1 transition-opacity duration-500 quote-text ${isQuoteVisible ? 'opacity-100' : 'opacity-0'}`}
+                        style={textAndIconDynamicStyle}
+                    >
+                        <em>"{quote}"</em>
                     </p>
                 </div>
             </div>

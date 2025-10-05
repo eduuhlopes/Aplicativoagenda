@@ -37,6 +37,14 @@
         } catch (e) {
           console.error("Failed to set theme from localStorage", e);
         }
+
+        // Handles the '100vh' issue on mobile browsers with dynamic UI
+        const setAppHeight = () => {
+          const doc = document.documentElement;
+          doc.style.setProperty('--app-height', `${window.innerHeight}px`);
+        };
+        window.addEventListener('resize', setAppHeight);
+        setAppHeight();
       })();
     </script>
     <style>
@@ -140,6 +148,26 @@
 
       .font-brand {
         font-family: 'Dancing Script', cursive;
+      }
+
+      /* Animation for brand name */
+      @keyframes subtle-glow-zoom {
+        0%, 100% {
+          transform: scale(1);
+          text-shadow: 1px 1px 5px rgba(255, 255, 255, 0.4);
+        }
+        50% {
+          transform: scale(1.03);
+          text-shadow: 1px 1px 12px rgba(255, 255, 255, 0.8);
+        }
+      }
+      .animate-brand-glow {
+        animation: subtle-glow-zoom 8s ease-in-out infinite;
+      }
+
+      /* For quote transitions in header */
+      .quote-text {
+          transition: opacity 0.5s ease-in-out;
       }
       
       /* Animation for new appointments: fade in, pop, and highlight */
@@ -465,8 +493,8 @@
           .form-container > form {
               max-width: 100%;
               width: 100%;
-              height: 95vh;
-              max-height: 95vh;
+              height: calc(var(--app-height, 100vh) * 0.95);
+              max-height: calc(var(--app-height, 100vh) * 0.95);
               border-radius: 1.5rem 1.5rem 0 0;
           }
           .form-container.visible > form {

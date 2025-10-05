@@ -295,7 +295,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, showToast }) => {
                         <div className="h-24 w-24 flex items-center justify-center mb-4">
                             <img src={logo} alt="Logo do Salão" className="w-full h-full object-cover rounded-full shadow-lg border-2 border-white/50" />
                         </div>
-                        <h1 className="font-brand text-6xl text-[var(--text-dark)] mb-2">Spaço Delas</h1>
+                        <h1 className="font-brand text-5xl sm:text-6xl text-[var(--text-dark)] mb-2 animate-brand-glow">Spaço Delas</h1>
                         <p className="text-xl text-[var(--text-body)] mb-6">{isRegistering ? 'Crie sua conta' : 'Acesse sua agenda'}</p>
                     </div>
                     

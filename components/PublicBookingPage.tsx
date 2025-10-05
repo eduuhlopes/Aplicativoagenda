@@ -165,7 +165,7 @@ const PublicBookingPage: React.FC = () => {
     const renderHeader = () => (
          <header className="text-center py-6 bg-[var(--surface-opaque)] border-b-2 border-[var(--border)]">
             <img src={logoUrl} alt="Spaço Delas Logo" className="h-20 w-20 rounded-full object-cover border-2 border-white/50 shadow-lg mx-auto mb-3" />
-            <h1 className="font-brand text-5xl text-[var(--text-dark)]">Spaço Delas</h1>
+            <h1 className="font-brand text-4xl sm:text-5xl text-[var(--text-dark)]">Spaço Delas</h1>
             <p className="text-lg text-[var(--secondary)]">Agende seu horário online</p>
         </header>
     );
@@ -301,28 +301,22 @@ const PublicBookingPage: React.FC = () => {
             if (!selectedDay || !selectedProfessional) return [];
             
             const dayOfWeek = selectedDay.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6;
-
-            // Determine if a schedule is configured. It's configured if it's not undefined and has keys.
             const schedule = selectedProfessional.workSchedule;
             const isScheduleConfigured = schedule && Object.keys(schedule).length > 0;
             const workDay = schedule?.[dayOfWeek];
 
             if (isScheduleConfigured && !workDay) {
-                // A schedule is set up, but this day is not in it or is null, so it's a day off.
                 return [];
             }
     
-            // Use the specific work day hours, or fallback to the full day if no schedule is configured.
             const workStartTime = workDay?.start || '07:00';
             const workEndTime = workDay?.end || '20:00';
 
             const dayStr = selectedDay.toDateString();
             const busySlots = new Set<string>();
 
-            // Blocked slots
             blockedSlots.forEach(slot => {
                 if (new Date(slot.date).toDateString() !== dayStr) return;
-                // Simplified: assuming all blocks apply to all professionals for now
                 if (slot.isFullDay) TIMES.forEach(time => busySlots.add(time));
                 else if (slot.startTime) {
                     const start = slot.startTime;
@@ -331,7 +325,6 @@ const PublicBookingPage: React.FC = () => {
                 }
             });
 
-            // Appointments for the selected professional
             appointments.forEach(appt => {
                 if (appt.professionalUsername !== selectedProfessional.username) return;
                 if (new Date(appt.datetime).toDateString() !== dayStr) return;
@@ -349,31 +342,44 @@ const PublicBookingPage: React.FC = () => {
             });
 
             const availableStartTimes: string[] = [];
-            const slotsNeeded = Math.ceil(totalDuration / 30);
+            const slotsNeeded = Math.ceil((totalDuration || 30) / 30);
+            
+            const [endWorkH, endWorkM] = workEndTime.split(':').map(Number);
+            const workEndTimeInMinutes = endWorkH * 60 + endWorkM;
             
             const today = new Date();
             const isTodaySelected = selectedDay.toDateString() === today.toDateString();
 
-            for (let i = 0; i <= TIMES.length - slotsNeeded; i++) {
+            for (let i = 0; i < TIMES.length; i++) {
                 const startTimeCandidate = TIMES[i];
-                const endTimeCandidate = TIMES[i + slotsNeeded - 1];
-                
-                if (startTimeCandidate < workStartTime || endTimeCandidate >= workEndTime) {
+
+                if (startTimeCandidate < workStartTime) {
                     continue;
+                }
+                
+                const [h, m] = startTimeCandidate.split(':').map(Number);
+                const startTimeInMinutes = h * 60 + m;
+                const endTimeInMinutes = startTimeInMinutes + (totalDuration || 30);
+
+                if (endTimeInMinutes > workEndTimeInMinutes) {
+                    break;
                 }
 
                 if (isTodaySelected) {
-                    const [h, m] = startTimeCandidate.split(':').map(Number);
                     const candidateDate = new Date();
                     candidateDate.setHours(h, m, 0, 0);
                     if (candidateDate < today) continue;
                 }
 
                 let isSequenceAvailable = true;
-                for (let j = 0; j < slotsNeeded; j++) {
-                    if (busySlots.has(TIMES[i + j])) {
-                        isSequenceAvailable = false;
-                        break;
+                if (i + slotsNeeded > TIMES.length) {
+                    isSequenceAvailable = false;
+                } else {
+                    for (let j = 0; j < slotsNeeded; j++) {
+                        if (busySlots.has(TIMES[i + j])) {
+                            isSequenceAvailable = false;
+                            break;
+                        }
                     }
                 }
                 if (isSequenceAvailable) availableStartTimes.push(startTimeCandidate);
