@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GoogleGenerativeAI } from '@google/genai';
+import { GoogleGenerativeAI } from 'https://aistudiocdn.com/@google/generative-ai';
 import { Appointment, Professional, Service } from '../types';
 
 interface SmartSchedulerModalProps {
@@ -167,7 +167,7 @@ const SmartSchedulerModal: React.FC<SmartSchedulerModalProps> = ({ isOpen, onClo
 
         } catch (error) {
             console.error("Error processing AI request:", error);
-            showToast("Ocorreu um erro ao processar a solicitação. Tente novamente.", "error");
+            showToast("Ocorreu um erro ao processar la solicitação. Tente novamente.", "error");
         } finally {
             setIsLoading(false);
         }

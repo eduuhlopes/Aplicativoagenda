@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface ToastProps {
     message: string;
@@ -19,10 +19,25 @@ const ErrorIcon = () => (
 
 
 const Toast: React.FC<ToastProps> = ({ message, type }) => {
+    const [isExiting, setIsExiting] = useState(false);
+
+    useEffect(() => {
+        // The parent component unmounts this after 3000ms.
+        // We start the exit animation shortly before that.
+        const exitTimer = setTimeout(() => {
+            setIsExiting(true);
+        }, 2500);
+
+        return () => {
+            clearTimeout(exitTimer);
+        };
+    }, []);
+
     const bgColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
+    const animationClass = isExiting ? 'toast-exit' : 'toast-enter';
 
     return (
-        <div className={`toast flex items-center gap-4 ${bgColor} text-white font-bold py-3 px-5 rounded-full shadow-lg`}>
+        <div className={`toast ${animationClass} flex items-center gap-4 ${bgColor} text-white font-bold py-3 px-5 rounded-full shadow-lg`}>
             {type === 'success' ? <SuccessIcon /> : <ErrorIcon />}
             <span>{message}</span>
         </div>

@@ -392,7 +392,7 @@
         align-items: center;
         gap: 10px;
       }
-      @keyframes toast-in {
+      @keyframes toast-enter-anim {
         from {
           opacity: 0;
           transform: translateY(20px) scale(0.9);
@@ -402,8 +402,21 @@
           transform: translateY(0) scale(1);
         }
       }
-      .toast {
-        animation: toast-in 0.5s cubic-bezier(0.21, 1.02, 0.73, 1) forwards;
+      @keyframes toast-exit-anim {
+        from {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+        to {
+          opacity: 0;
+          transform: translateY(20px) scale(0.9);
+        }
+      }
+      .toast-enter {
+        animation: toast-enter-anim 0.5s cubic-bezier(0.21, 1.02, 0.73, 1) forwards;
+      }
+      .toast-exit {
+        animation: toast-exit-anim 0.5s ease-out forwards;
       }
       
       /* Bottom Navigation & FAB */
