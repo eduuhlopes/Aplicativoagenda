@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { GoogleGenerativeAI } from 'https://aistudiocdn.com/@google/generative-ai';
+import { GoogleGenerativeAI } from '@google/genai';
 import { Appointment, BlockedSlot, AppointmentStatus, Service, Client, Professional } from '../types';
 import DateTimePickerModal from './DateTimePickerModal';
 
