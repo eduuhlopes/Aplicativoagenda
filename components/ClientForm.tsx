@@ -5,10 +5,11 @@ import { Client } from '../types';
 interface ContactInfo {
     name?: string[];
     tel?: string[];
+    email?: string[];
 }
 
 interface ContactsManager {
-    select(properties: Array<'name' | 'tel'>, options?: { multiple: boolean }): Promise<ContactInfo[]>;
+    select(properties: Array<'name' | 'tel' | 'email'>, options?: { multiple: boolean }): Promise<ContactInfo[]>;
 }
 
 interface NavigatorWithContacts extends Navigator {
@@ -32,6 +33,7 @@ const AddressBookIcon = () => (
 const ClientForm: React.FC<ClientFormProps> = ({ onSave, clientToEdit, onCancel, existingClients }) => {
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
+    const [email, setEmail] = useState('');
     const [observations, setObservations] = useState('');
     const [error, setError] = useState('');
     const [isContactPickerSupported, setIsContactPickerSupported] = useState(false);
@@ -49,10 +51,12 @@ const ClientForm: React.FC<ClientFormProps> = ({ onSave, clientToEdit, onCancel,
         if (clientToEdit) {
             setName(clientToEdit.name);
             setPhone(clientToEdit.phone);
+            setEmail(clientToEdit.email || '');
             setObservations(clientToEdit.observations || '');
         } else {
             setName('');
             setPhone('');
+            setEmail('');
             setObservations('');
         }
         setError('');
@@ -81,7 +85,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ onSave, clientToEdit, onCancel,
     const handleSelectContact = async () => {
         try {
             // Use type assertion to call the Contact Picker API.
-            const contacts = await (navigator as NavigatorWithContacts).contacts!.select(['name', 'tel'], { multiple: false });
+            const contacts = await (navigator as NavigatorWithContacts).contacts!.select(['name', 'tel', 'email'], { multiple: false });
             if (contacts.length === 0) {
                 return; // User cancelled
             }
@@ -97,6 +101,9 @@ const ClientForm: React.FC<ClientFormProps> = ({ onSave, clientToEdit, onCancel,
                     digits = digits.substring(2);
                 }
                 setPhone(formatPhone(digits));
+            }
+            if (contact.email && contact.email.length > 0) {
+                setEmail(contact.email[0]);
             }
         } catch (ex) {
             console.error('Error selecting contact:', ex);
@@ -122,6 +129,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ onSave, clientToEdit, onCancel,
         const clientData = {
             name: name.trim(),
             phone,
+            email: email.trim(),
             observations: observations.trim()
         };
         
@@ -166,6 +174,12 @@ const ClientForm: React.FC<ClientFormProps> = ({ onSave, clientToEdit, onCancel,
                         Telefone (WhatsApp):
                     </label>
                     <input type="tel" id="client-phone-form" value={phone} onChange={handlePhoneChange} placeholder="(XX) XXXXX-XXXX" maxLength={15} className={inputClasses} required />
+                </div>
+                <div>
+                    <label htmlFor="client-email-form" className="block text-md font-medium text-[var(--text-dark)] mb-1">
+                        E-mail (opcional):
+                    </label>
+                    <input type="email" id="client-email-form" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@exemplo.com" className={inputClasses} />
                 </div>
             </div>
              

@@ -4,6 +4,7 @@ export interface Appointment {
   id: number;
   clientName: string;
   clientPhone: string;
+  clientEmail?: string;
   services: { name: string; value: number; duration: number; category: string }[];
   datetime: Date; // Start time
   endTime: Date; // End time
@@ -14,11 +15,18 @@ export interface Appointment {
   reminderSent?: boolean;
 }
 
+export interface ModalButton {
+    text: string;
+    onClick: () => void;
+    style?: 'primary' | 'secondary' | 'danger';
+}
+
 export interface ModalInfo {
   isOpen: boolean;
   title: string;
   message: string;
   onConfirm?: () => void;
+  buttons?: ModalButton[];
 }
 
 export interface WorkDay {
@@ -64,6 +72,7 @@ export interface Client {
   id: number;
   name: string;
   phone: string;
+  email?: string;
   observations?: string;
 }
 

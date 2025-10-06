@@ -24,8 +24,9 @@ import DateTimePickerModal from './components/DateTimePickerModal';
 // Utils, Types, and Constants
 import { getAverageColor, getContrastColor, generateGradient, hexToRgb } from './components/colorUtils';
 // FIX: Imported StoredProfessional type to correctly type the 'professionals' state.
-import { Appointment, Client, Professional, BlockedSlot, Service, MonthlyPackage, EnrichedClient, ModalInfo, AppointmentStatus, FinancialData, StoredProfessional } from './types';
+import { Appointment, Client, Professional, BlockedSlot, Service, MonthlyPackage, EnrichedClient, ModalInfo, AppointmentStatus, FinancialData, StoredProfessional, ModalButton } from './types';
 import { SERVICES } from './constants';
+import * as emailService from './utils/emailService';
 
 const PlusIcon: React.FC<{className?: string}> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-5 w-5 mr-2"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -308,11 +309,11 @@ const App: React.FC = () => {
         setTimeout(() => setToastInfo(null), 3000);
     }, []);
 
-    const showModal = useCallback((title: string, message: string, onConfirm?: () => void) => {
-        setModalInfo({ isOpen: true, title, message, onConfirm });
+    const showModal = useCallback((title: string, message: string, onConfirm?: () => void, buttons?: ModalButton[]) => {
+        setModalInfo({ isOpen: true, title, message, onConfirm, buttons });
     }, []);
 
-    const closeModal = useCallback(() => setModalInfo({ isOpen: false, title: '', message: '' }), []);
+    const closeModal = useCallback(() => setModalInfo(prev => ({ ...prev, isOpen: false })), []);
     
     // Auth
     const handleLogin = useCallback((user: Professional) => {
@@ -360,7 +361,7 @@ const App: React.FC = () => {
         }, 150);
     }, [handleCloseForm]);
 
-    // Generate WhatsApp message and open link
+    // Notification Handlers
     const openWhatsApp = (appointment: Appointment, messageType: 'new' | 'update' | 'cancel') => {
         const phone = appointment.clientPhone.replace(/\D/g, '');
         const services = appointment.services.map(s => s.name).join(', ');
@@ -382,6 +383,59 @@ const App: React.FC = () => {
 
         window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, '_blank');
     };
+    
+    const showNotificationOptionsModal = useCallback((appointment: Appointment, type: 'new' | 'update' | 'cancel') => {
+        if (!appointment.clientPhone && !appointment.clientEmail) return;
+
+        const buttons: ModalButton[] = [];
+
+        if (appointment.clientPhone) {
+            buttons.push({
+                text: 'Enviar WhatsApp',
+                style: 'secondary',
+                onClick: () => {
+                    openWhatsApp(appointment, type);
+                    closeModal();
+                }
+            });
+        }
+
+        if (appointment.clientEmail) {
+            buttons.push({
+                text: 'Enviar E-mail',
+                style: 'primary',
+                onClick: async () => {
+                    closeModal(); // Close modal immediately for better UX
+                    try {
+                        const professional = professionalsList.find(p => p.username === appointment.professionalUsername);
+                        const templateParams: emailService.TemplateParams = {
+                            client_name: appointment.clientName,
+                            client_email: appointment.clientEmail,
+                            client_phone: appointment.clientPhone,
+                            appointment_date: appointment.datetime.toLocaleDateString('pt-BR', { dateStyle: 'full' }),
+                            appointment_time: appointment.datetime.toLocaleTimeString('pt-BR', { timeStyle: 'short' }),
+                            professional_name: professional?.name || 'N/A',
+                            services_list: appointment.services.map(s => s.name).join(', '),
+                            total_value: appointment.services.reduce((sum, s) => sum + s.value, 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                        };
+                        await emailService.sendAppointmentConfirmationEmail(templateParams);
+                        showToast('Email de confirmação enviado!', 'success');
+                    } catch (err) {
+                        showToast('Falha ao enviar e-mail. Verifique suas credenciais.', 'error');
+                    }
+                }
+            });
+        }
+        
+        if (buttons.length > 0) {
+            showModal(
+                'Notificar Cliente?',
+                `Como você gostaria de notificar ${appointment.clientName} sobre ${type === 'new' ? 'o novo agendamento' : 'as alterações'}?`,
+                undefined,
+                buttons
+            );
+        }
+    }, [closeModal, professionalsList, showToast, showModal]);
 
     // CRUD Handlers
     const handleScheduleAppointment = useCallback((newAppointmentData: Omit<Appointment, 'id' | 'status'>) => {
@@ -395,27 +449,16 @@ const App: React.FC = () => {
         setTimeout(() => setNewlyAddedAppointmentId(null), 2000); // Animation duration is 1.5s
         showToast('Agendamento criado com sucesso!', 'success');
         
-        // Instead of calling openWhatsApp directly, show a modal to confirm.
-        // This makes the action more explicit for the user and more robust against popup blockers.
-        showModal(
-            'Notificar Cliente?',
-            `Deseja enviar uma mensagem de confirmação para ${newAppointment.clientName} no WhatsApp?`,
-            () => {
-                openWhatsApp(newAppointment, 'new');
-                closeModal(); // Explicitly close the modal after action
-            }
-        );
-    }, [showToast, setAppointments, showModal, closeModal]);
+        showNotificationOptionsModal(newAppointment, 'new');
+
+    }, [showToast, setAppointments, showNotificationOptionsModal]);
 
     const handleUpdateAppointment = useCallback((updatedAppointment: Appointment) => {
         setAppointments(prev => prev.map(a => a.id === updatedAppointment.id ? updatedAppointment : a));
         showToast('Agendamento atualizado!', 'success');
-        showModal('Notificar Cliente?', 'Deseja enviar uma mensagem no WhatsApp com as alterações?', () => {
-            const messageType = updatedAppointment.status === 'cancelled' ? 'cancel' : 'update';
-            openWhatsApp(updatedAppointment, messageType);
-            closeModal(); // Explicitly close the modal after action
-        });
-    }, [showToast, showModal, setAppointments, closeModal]);
+        const type = updatedAppointment.status === 'cancelled' ? 'cancel' : 'update';
+        showNotificationOptionsModal(updatedAppointment, type);
+    }, [showToast, setAppointments, showNotificationOptionsModal]);
 
     const handleMarkAsDelayed = useCallback((appointment: Appointment) => {
         setAppointments(prev => prev.map(a => a.id === appointment.id ? { ...a, status: 'delayed' } : a));
@@ -466,10 +509,8 @@ const App: React.FC = () => {
         setAppointmentRequests(prev => prev.filter(req => req.id !== requestToApprove.id));
         
         showToast('Solicitação aprovada e adicionada à agenda!', 'success');
-        showModal('Notificar Cliente?', `Deseja enviar uma confirmação para ${requestToApprove.clientName} no WhatsApp?`, () => {
-            openWhatsApp(approvedAppointment, 'new');
-        });
-    }, [setAppointments, setAppointmentRequests, showToast, showModal]);
+        showNotificationOptionsModal(approvedAppointment, 'new');
+    }, [setAppointments, setAppointmentRequests, showToast, showNotificationOptionsModal]);
 
     const handleRejectRequest = useCallback((requestId: number) => {
         setAppointmentRequests(prev => prev.filter(req => req.id !== requestId));
@@ -702,6 +743,7 @@ const App: React.FC = () => {
                         onViewClientHistory={handleViewClientHistory}
                         professionals={professionalsList}
                         currentUser={currentUser}
+                        showToast={showToast}
                     />
                 }
             </div>
@@ -734,7 +776,7 @@ const App: React.FC = () => {
                 blockedSlots={blockedSlots}
             />
 
-            <Modal {...modalInfo} onClose={() => setModalInfo({ ...modalInfo, isOpen: false })} />
+            <Modal {...modalInfo} onClose={closeModal} />
             
             {toastInfo && (
                 <div key={toastInfo.id} className="toast-container">

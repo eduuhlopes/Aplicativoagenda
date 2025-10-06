@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Appointment, Professional, Service, BlockedSlot, StoredProfessional } from '../types';
 import { SERVICES, TIMES, MONTHS } from '../constants';
+import * as emailService from '../utils/emailService';
 
 // Helper to parse dates from JSON while loading
 const dateTimeReviver = (key: string, value: any) => {
@@ -34,6 +35,7 @@ const PublicBookingPage: React.FC = () => {
     const [step, setStep] = useState(1);
     const [clientPhone, setClientPhone] = useState('');
     const [clientName, setClientName] = useState('');
+    const [clientEmail, setClientEmail] = useState('');
     const [isPhoneSubmitted, setIsPhoneSubmitted] = useState(false);
     const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
     const [selectedServices, setSelectedServices] = useState<Service[]>([]);
@@ -110,6 +112,7 @@ const PublicBookingPage: React.FC = () => {
         const existingClient = appointments.find(a => a.clientPhone.replace(/\D/g, '') === clientPhone.replace(/\D/g, ''));
         if (existingClient) {
             setClientName(existingClient.clientName);
+            setClientEmail(existingClient.clientEmail || '');
         }
         setIsPhoneSubmitted(true);
         setStep(2);
@@ -137,8 +140,8 @@ const PublicBookingPage: React.FC = () => {
     };
     
     const handleBookingRequest = () => {
-        if (!selectedProfessional || selectedServices.length === 0 || !selectedDateTime || !clientName) {
-            alert("Por favor, preencha todos os campos.");
+        if (!selectedProfessional || selectedServices.length === 0 || !selectedDateTime || !clientName || !clientEmail) {
+            alert("Por favor, preencha todos os campos, incluindo seu nome e email.");
             return;
         }
 
@@ -149,6 +152,7 @@ const PublicBookingPage: React.FC = () => {
             id: Date.now(),
             clientName,
             clientPhone,
+            clientEmail,
             professionalUsername: selectedProfessional.username,
             services: selectedServices,
             datetime: selectedDateTime,
@@ -158,6 +162,25 @@ const PublicBookingPage: React.FC = () => {
 
         setAppointmentRequests(prev => [...prev, newRequest]);
         setStep(6); // Success step
+        
+        // Send emails (to client and admin)
+        const templateParams: emailService.TemplateParams = {
+            client_name: newRequest.clientName,
+            client_email: newRequest.clientEmail || 'Não informado',
+            client_phone: newRequest.clientPhone,
+            appointment_date: newRequest.datetime.toLocaleDateString('pt-BR', { dateStyle: 'full' }),
+            appointment_time: newRequest.datetime.toLocaleTimeString('pt-BR', { timeStyle: 'short' }),
+            professional_name: selectedProfessional.name,
+            services_list: newRequest.services.map(s => s.name).join(', '),
+            total_value: newRequest.services.reduce((sum, s) => sum + s.value, 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+        };
+        
+        // Fire and forget, don't block UI on email success/failure
+        emailService.sendBookingRequestClientEmail(templateParams)
+            .catch(err => console.error("Failed to send client email:", err));
+        
+        emailService.sendBookingRequestAdminEmail(templateParams)
+            .catch(err => console.error("Failed to send admin email:", err));
     };
     
     // --- Render Methods ---
@@ -446,9 +469,15 @@ const PublicBookingPage: React.FC = () => {
                 <p><strong>Data:</strong> {selectedDateTime?.toLocaleString('pt-BR', { dateStyle: 'full', timeStyle: 'short' })}</p>
                 <p className="font-bold text-xl text-[var(--success)]"><strong>Total:</strong> {selectedServices.reduce((s,i) => s + i.value, 0).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</p>
             </div>
-            <div className="mt-4">
-                 <label htmlFor="client-name" className="block font-medium text-[var(--text-dark)] mb-1">Seu nome completo:</label>
-                 <input type="text" id="client-name" value={clientName} onChange={e => setClientName(e.target.value)} required className="w-full h-11 px-3 bg-[var(--highlight)] border-2 border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"/>
+            <div className="mt-4 space-y-3">
+                 <div>
+                    <label htmlFor="client-name" className="block font-medium text-[var(--text-dark)] mb-1">Seu nome completo:</label>
+                    <input type="text" id="client-name" value={clientName} onChange={e => setClientName(e.target.value)} required className="w-full h-11 px-3 bg-[var(--highlight)] border-2 border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"/>
+                 </div>
+                 <div>
+                    <label htmlFor="client-email" className="block font-medium text-[var(--text-dark)] mb-1">Seu e-mail:</label>
+                    <input type="email" id="client-email" value={clientEmail} onChange={e => setClientEmail(e.target.value)} required placeholder="Para receber a confirmação" className="w-full h-11 px-3 bg-[var(--highlight)] border-2 border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"/>
+                </div>
             </div>
             <button onClick={handleBookingRequest} className="mt-6 w-full py-3 btn-primary-gradient text-white font-bold rounded-lg shadow-md hover:scale-105 transition-transform active:scale-95">
                 Enviar Solicitação
@@ -463,7 +492,7 @@ const PublicBookingPage: React.FC = () => {
                 <path className="success-checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
             </svg>
             <h2 className="text-2xl font-bold text-center text-[var(--text-dark)] mt-4 mb-2">Solicitação Enviada!</h2>
-            <p className="text-[var(--text-body)] mb-6">Seu pedido foi enviado com sucesso. Aguarde a confirmação da nossa equipe via WhatsApp.</p>
+            <p className="text-[var(--text-body)] mb-6">Seu pedido foi enviado com sucesso. Enviamos uma confirmação para o seu e-mail e em breve nossa equipe entrará em contato via WhatsApp.</p>
             <button onClick={() => window.location.reload()} className="w-full max-w-sm py-3 btn-primary-gradient text-white font-bold rounded-lg shadow-md hover:scale-105 transition-transform active:scale-95">
                 Agendar Novo Horário
             </button>

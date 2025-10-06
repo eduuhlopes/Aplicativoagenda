@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { GoogleGenerativeAI } from '@google/genai';
 import { Appointment, BlockedSlot, AppointmentStatus, Service, Client, Professional } from '../types';
 import DateTimePickerModal from './DateTimePickerModal';
 
@@ -15,6 +16,7 @@ interface AppointmentFormProps {
     onViewClientHistory: (client: Client) => void;
     professionals: Professional[];
     currentUser: Professional;
+    showToast: (message: string, type?: 'success' | 'error') => void;
 }
 
 const CheckIcon = () => (
@@ -23,10 +25,24 @@ const CheckIcon = () => (
     </svg>
 );
 
+const SparklesIcon = ({ className = "h-5 w-5" }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.293 2.293a1 1 0 010 1.414L10 12l-2.293-2.293a1 1 0 010-1.414L10 6m5 4l2.293-2.293a1 1 0 000-1.414L15 6m-5 4l-2.293 2.293a1 1 0 000 1.414L10 18l2.293-2.293a1 1 0 000-1.414L10 12z" />
+    </svg>
+);
 
-const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointmentToEdit, onUpdate, onCancelEdit, appointments, blockedSlots, onMarkAsDelayed, services, clients, onViewClientHistory, professionals, currentUser }) => {
+const LoadingSpinner = () => (
+    <svg className="animate-spin h-5 w-5 text-[var(--primary)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+    </svg>
+);
+
+
+const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointmentToEdit, onUpdate, onCancelEdit, appointments, blockedSlots, onMarkAsDelayed, services, clients, onViewClientHistory, professionals, currentUser, showToast }) => {
     const [clientName, setClientName] = useState('');
     const [clientPhone, setClientPhone] = useState('');
+    const [clientEmail, setClientEmail] = useState('');
     const [professionalUsername, setProfessionalUsername] = useState('');
     const [selectedServices, setSelectedServices] = useState<{ name: string; value: number; duration: number; category: string }[]>([]);
     const [serviceToAdd, setServiceToAdd] = useState('');
@@ -35,6 +51,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
     const [isPickerOpen, setIsPickerOpen] = useState(false);
     const [modifiedServiceIndices, setModifiedServiceIndices] = useState<Set<number>>(new Set());
     const [isSuccess, setIsSuccess] = useState(false);
+    const [isOrganizing, setIsOrganizing] = useState(false);
     
     // State for client autocomplete and history link
     const [suggestions, setSuggestions] = useState<Client[]>([]);
@@ -54,6 +71,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
         if (appointmentToEdit) {
             setClientName(appointmentToEdit.clientName);
             setClientPhone(appointmentToEdit.clientPhone);
+            setClientEmail(appointmentToEdit.clientEmail || '');
             setProfessionalUsername(appointmentToEdit.professionalUsername);
             setSelectedServices(appointmentToEdit.services);
             setSelectedDateTime(new Date(appointmentToEdit.datetime));
@@ -101,6 +119,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
     const resetForm = () => {
         setClientName('');
         setClientPhone('');
+        setClientEmail('');
         setProfessionalUsername('');
         setSelectedServices([]);
         setServiceToAdd('');
@@ -131,6 +150,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
     const handleSuggestionClick = (client: Client) => {
         setClientName(client.name);
         setClientPhone(client.phone);
+        setClientEmail(client.email || '');
         setSelectedClient(client);
         setIsSuggestionsVisible(false);
     };
@@ -225,6 +245,33 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
         setIsPickerOpen(false);
     };
 
+    const handleOrganizeObservations = async () => {
+        if (!observations) return;
+        setIsOrganizing(true);
+        try {
+            const ai = new GoogleGenerativeAI({apiKey: process.env.API_KEY});
+            const prompt = `Você é um assistente de salão de beleza. Reorganize as anotações a seguir sobre o agendamento de uma cliente em observações claras e estruturadas. Use bullet points (usando asteriscos *) para informações chave. Foque nas preferências da cliente, avisos importantes (como alergias, em maiúsculas), e serviços mencionados que talvez precisem ser adicionados. Torne as anotações mais profissionais e fáceis de ler. As anotações são:\n\n"${observations}"`;
+            
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+            });
+    
+            const text = response.text;
+            if (text) {
+                setObservations(text.trim());
+                showToast('Observações organizadas com IA!', 'success');
+            } else {
+                throw new Error("A resposta da IA está vazia.");
+            }
+        } catch (error) {
+            console.error("Error organizing observations with AI:", error);
+            showToast("Erro ao contatar a IA. Tente novamente.", 'error');
+        } finally {
+            setIsOrganizing(false);
+        }
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (isSuccess) return; // Prevent multiple submissions
@@ -247,6 +294,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
         const appointmentData = {
             clientName,
             clientPhone,
+            clientEmail,
             professionalUsername,
             services: selectedServices,
             datetime: finalDateTime,
@@ -347,6 +395,14 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                 </div>
 
                 <div>
+                    <label htmlFor="client-email" className="block text-md font-medium text-[var(--text-dark)] mb-1">
+                        E-mail (opcional):
+                    </label>
+                    <input type="email" id="client-email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} placeholder="email@exemplo.com" className={inputClasses} />
+                </div>
+
+
+                <div>
                     <label htmlFor="professional-select" className="block text-md font-medium text-[var(--text-dark)] mb-1">Profissional:</label>
                     <select
                         id="professional-select"
@@ -435,9 +491,21 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                 )}
                 
                 <div>
-                    <label htmlFor="observations" className="block text-md font-medium text-[var(--text-dark)] mb-1">
-                        Observações:
-                    </label>
+                    <div className="flex justify-between items-center mb-1">
+                        <label htmlFor="observations" className="block text-md font-medium text-[var(--text-dark)]">
+                            Observações:
+                        </label>
+                        <button
+                            type="button"
+                            onClick={handleOrganizeObservations}
+                            disabled={!observations || isOrganizing}
+                            className="flex items-center gap-1.5 text-sm text-[var(--primary)] font-semibold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Organizar anotações com IA"
+                        >
+                            {isOrganizing ? <LoadingSpinner /> : <SparklesIcon />}
+                            <span>Organizar com IA</span>
+                        </button>
+                    </div>
                     <textarea id="observations" value={observations} onChange={(e) => setObservations(e.target.value)} placeholder="Alergias, preferências, etc." rows={2} className="w-full px-3 py-2 bg-[var(--highlight)] border border-[var(--border)] rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-[var(--accent)] transition" />
                 </div>
 
@@ -461,13 +529,10 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
 
                 <div className="mt-6 flex flex-col items-center">
                     <button type="submit" className="w-full py-3 px-4 btn-primary-gradient text-white font-bold text-lg rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--primary)] transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:grayscale" disabled={!clientName || !clientPhone || !professionalUsername || selectedServices.length === 0 || !selectedDateTime || isSuccess}>
-                        {appointmentToEdit ? 'Salvar Alterações' : 'Agendar e Enviar WhatsApp'}
+                        {appointmentToEdit ? 'Salvar Alterações' : 'Concluir Agendamento'}
                     </button>
                     <p className="text-center text-sm text-[var(--secondary)] italic mt-2">
-                        {appointmentToEdit
-                            ? 'Ao salvar, você poderá notificar a cliente sobre as alterações via WhatsApp.'
-                            : 'Ao agendar, uma mensagem de confirmação será aberta no WhatsApp para ser enviada à cliente.'
-                        }
+                        Após salvar, você poderá notificar a cliente sobre as alterações.
                     </p>
                 </div>
                 {appointmentToEdit && (
