@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GoogleGenerativeAI } from '@google/genai';
+import { GoogleGenerativeAI } from 'https://aistudiocdn.com/@google/generative-ai';
 import { Appointment, Professional, Service } from '../types';
 
 interface SmartSchedulerModalProps {
