@@ -19,6 +19,7 @@ import NotificationManager from './components/NotificationManager';
 import UserManagement from './components/UserManagement';
 import BookingRequestManager from './components/BookingRequestManager';
 import DateTimePickerModal from './components/DateTimePickerModal';
+import SmartSchedulerModal from './components/SmartSchedulerModal';
 
 
 // Utils, Types, and Constants
@@ -37,6 +38,12 @@ const PlusIcon: React.FC<{className?: string}> = ({ className }) => (
 const BlockTimeIcon: React.FC<{className?: string}> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-5 w-5 mr-2"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2zM16 14.5l-8-8" />
+    </svg>
+);
+
+const SparklesIcon: React.FC<{className?: string}> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-5 w-5 mr-2"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.293 2.293a1 1 0 010 1.414L10 12l-2.293-2.293a1 1 0 010-1.414L10 6m5 4l2.293-2.293a1 1 0 000-1.414L15 6m-5 4l-2.293 2.293a1 1 0 000 1.414L10 18l2.293-2.293a1 1 0 000-1.414L10 12z" />
     </svg>
 );
 
@@ -102,6 +109,7 @@ const App: React.FC = () => {
     const [isClientFormVisible, setIsClientFormVisible] = useState(false);
     const [isBookingRequestModalOpen, setIsBookingRequestModalOpen] = useState(false);
     const [isBlockerModalOpen, setIsBlockerModalOpen] = useState(false);
+    const [isAssistantVisible, setIsAssistantVisible] = useState(false);
     const [appointmentToEdit, setAppointmentToEdit] = useState<Appointment | null>(null);
     const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
     const [modalInfo, setModalInfo] = useState<ModalInfo>({ isOpen: false, title: '', message: '' });
@@ -339,6 +347,14 @@ const App: React.FC = () => {
     const handleCloseForm = useCallback(() => {
         setIsFormVisible(false);
         setAppointmentToEdit(null);
+    }, []);
+    
+    // Smart Scheduler Assistant
+    const handleAssistantSchedule = useCallback((data: Partial<Appointment>) => {
+        // This receives the data from the AI and pre-fills the form
+        setAppointmentToEdit(data as Appointment); // Cast as Appointment, form will handle missing ID
+        setIsAssistantVisible(false);
+        setIsFormVisible(true);
     }, []);
 
     // Client Form
@@ -581,6 +597,13 @@ const App: React.FC = () => {
                         <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-2">
                             <h2 className="text-3xl font-bold text-[var(--text-dark)]">Agenda</h2>
                             <div className="flex items-center gap-2">
+                                 <button
+                                    onClick={() => setIsAssistantVisible(true)}
+                                    className="flex items-center px-4 py-2 bg-white border-2 border-dashed border-[var(--accent)] text-[var(--primary)] font-bold rounded-lg shadow-sm hover:bg-[var(--highlight)] transition-all active:scale-95"
+                                >
+                                    <SparklesIcon />
+                                    Agendamento com IA
+                                </button>
                                 <button
                                     onClick={() => setIsBlockerModalOpen(true)}
                                     className="flex items-center px-4 py-2 bg-white border border-[var(--border)] text-[var(--secondary)] font-bold rounded-lg shadow-sm hover:bg-[var(--highlight)] transition-all active:scale-95"
@@ -774,6 +797,16 @@ const App: React.FC = () => {
                 onConfirm={handleBlockSlot}
                 showBlockDayToggle={true}
                 blockedSlots={blockedSlots}
+            />
+            
+            <SmartSchedulerModal
+                isOpen={isAssistantVisible}
+                onClose={() => setIsAssistantVisible(false)}
+                onSchedule={handleAssistantSchedule}
+                services={services}
+                professionals={professionalsList}
+                showToast={showToast}
+                currentUser={currentUser}
             />
 
             <Modal {...modalInfo} onClose={closeModal} />
