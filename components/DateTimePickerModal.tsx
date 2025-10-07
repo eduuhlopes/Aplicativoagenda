@@ -56,15 +56,11 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
         }
         for (let day = 1; day <= daysInMonth; day++) {
             const fullDate = new Date(year, month, day);
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-
-            const isPast = fullDate < today;
             const isSelected = selectedDay?.toDateString() === fullDate.toDateString();
             const isBlocked = blockedSlots.some(slot => slot.isFullDay && new Date(slot.date).toDateString() === fullDate.toDateString());
             
             const baseClasses = "w-10 h-10 flex items-center justify-center rounded-full transition-all";
-            let dayClasses = isPast || isBlocked ? `${baseClasses} text-gray-400 cursor-not-allowed` : `${baseClasses} cursor-pointer hover:bg-[var(--border)] active:scale-95`;
+            let dayClasses = isBlocked ? `${baseClasses} text-gray-400 cursor-not-allowed` : `${baseClasses} cursor-pointer hover:bg-[var(--border)] active:scale-95`;
             
             if (isBlocked) {
                 dayClasses += ' bg-rose-200 line-through';
@@ -77,7 +73,7 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
                 <div
                     key={day}
                     className={dayClasses}
-                    onClick={() => !(isPast || isBlocked) && setSelectedDay(fullDate)}
+                    onClick={() => !isBlocked && setSelectedDay(fullDate)}
                 >
                     {day}
                 </div>
@@ -178,9 +174,6 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
         const [endWorkH, endWorkM] = workEndTime.split(':').map(Number);
         const workEndTimeInMinutes = endWorkH * 60 + endWorkM;
         
-        const today = new Date();
-        const isTodaySelected = selectedDay.toDateString() === today.toDateString();
-
         for (let i = 0; i < TIMES.length; i++) {
             const startTimeCandidate = TIMES[i];
 
@@ -194,12 +187,6 @@ const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({ isOpen, onClo
 
             if (endTimeInMinutes > workEndTimeInMinutes) {
                 break;
-            }
-
-            if (isTodaySelected) {
-                const candidateDate = new Date();
-                candidateDate.setHours(h, m, 0, 0);
-                if (candidateDate < today) continue;
             }
 
             let isSequenceAvailable = true;
