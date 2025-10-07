@@ -13,14 +13,15 @@ interface HeaderProps {
     onLogout: () => void;
 }
 
-const inspirationalQuotes = [
-    "A beleza começa no momento em que você decide ser você mesma.",
-    "Cuide-se como se fosse de ouro. E é.",
-    "Sua beleza é a sua própria obra de arte.",
-    "A maior elegância é a simplicidade.",
-    "Invista em você. É o melhor investimento que você pode fazer.",
-    "Ser bonita significa ser você mesma. Você não precisa ser aceita pelos outros.",
-    "A autoconfiança é o melhor look."
+const bibleVerses = [
+    "O coração alegre é um bom remédio. - Provérbios 17:22",
+    "Eu tenho força para todas as coisas, por meio daquele que me dá poder. - Filipenses 4:13",
+    "A sua beleza não deve ser a exterior... mas a pessoa secreta do coração. - 1 Pedro 3:3, 4",
+    "Lancem sobre ele toda a sua ansiedade, porque ele cuida de vocês. - 1 Pedro 5:7",
+    "A alegria que vem de Jeová é a fortaleza de vocês. - Neemias 8:10",
+    "Pois Deus 'enxugará dos seus olhos toda lágrima'. - Apocalipse 21:4",
+    "O fruto do espírito é amor, alegria, paz... - Gálatas 5:22, 23",
+    "Jeová é o meu pastor. Nada me faltará. - Salmo 23:1"
 ];
 
 const formatRelativeDateTime = (date: Date): string => {
@@ -59,14 +60,14 @@ const Header: React.FC<HeaderProps> = ({ logoUrl, headerStyle, notificationAppoi
     
     useEffect(() => {
         // Set initial quote
-        setQuote(inspirationalQuotes[Math.floor(Math.random() * inspirationalQuotes.length)]);
+        setQuote(bibleVerses[Math.floor(Math.random() * bibleVerses.length)]);
 
         const quoteInterval = setInterval(() => {
             setIsQuoteVisible(false); // Start fade out
             setTimeout(() => {
                 let nextQuote;
                 do {
-                    nextQuote = inspirationalQuotes[Math.floor(Math.random() * inspirationalQuotes.length)];
+                    nextQuote = bibleVerses[Math.floor(Math.random() * bibleVerses.length)];
                 } while (nextQuote === quote); // Avoid showing the same quote twice in a row
                 setQuote(nextQuote);
                 setIsQuoteVisible(true); // Start fade in
