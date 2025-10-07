@@ -47,7 +47,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, title, message, onClose, onConfir
                 onClick={(e) => e.stopPropagation()}
             >
                 <h3 className="text-2xl font-bold text-[var(--text-dark)] mb-4">{title}</h3>
-                <p className="text-md text-[var(--text-body)] mb-6">{message}</p>
+                <p className="text-md text-[var(--text-body)] mb-6 whitespace-pre-wrap">{message}</p>
                 <div className="flex justify-end gap-3">
                     {actionButtons.map((button, index) => (
                          <button

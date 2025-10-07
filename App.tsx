@@ -504,10 +504,13 @@ const App: React.FC = () => {
                 const totalDuration = servicesForThisWeek.reduce((sum, s) => sum + s.duration, 0);
                 const endTime = new Date(appointmentDate.getTime() + totalDuration * 60 * 1000);
 
+                const isRetroactive = new Date(appointmentDate) < new Date();
+                const status: AppointmentStatus = isRetroactive ? 'completed' : 'scheduled';
+
                 const newAppt: Appointment = {
                     ...appointmentCoreData,
                     id: Date.now() + i,
-                    status: 'scheduled',
+                    status: status,
                     datetime: appointmentDate,
                     endTime: endTime,
                     services: servicesForThisWeek,
@@ -520,31 +523,68 @@ const App: React.FC = () => {
             setAppointments(prev => [...prev, ...appointmentsToCreate].sort((a,b) => a.datetime.getTime() - b.datetime.getTime()));
             setNewlyAddedAppointmentId(appointmentsToCreate[0].id);
             setTimeout(() => setNewlyAddedAppointmentId(null), 2000);
-            showToast('Pacote de 4 agendamentos criado com sucesso!', 'success');
-            showNotificationOptionsModal(appointmentsToCreate[0], 'new');
+            
+            const isFirstAppointmentRetroactive = new Date(appointmentsToCreate[0].datetime) < new Date();
+            if (isFirstAppointmentRetroactive) {
+                const datesList = appointmentsToCreate.map(appt => 
+                    `- ${appt.datetime.toLocaleDateString('pt-BR')} às ${appt.datetime.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})} (Status: ${appt.status === 'completed' ? 'Finalizado' : 'Agendado'})`
+                ).join('\n');
+
+                showModal(
+                    'Pacote Retroativo Criado',
+                    `O pacote foi criado com as seguintes datas e status:\n\n${datesList}`,
+                    undefined,
+                    [{ text: 'OK', onClick: closeModal, style: 'primary' }]
+                );
+            } else {
+                showToast('Pacote de 4 agendamentos criado com sucesso!', 'success');
+                showNotificationOptionsModal(appointmentsToCreate[0], 'new');
+            }
+
         } else {
+            const isRetroactive = new Date(appointmentCoreData.datetime) < new Date();
+            const status: AppointmentStatus = isRetroactive ? 'completed' : 'scheduled';
+
             const newAppointment: Appointment = {
                 ...appointmentCoreData,
                 id: Date.now(),
-                status: 'scheduled',
+                status: status,
             };
 
             setAppointments(prev => [...prev, newAppointment].sort((a,b) => a.datetime.getTime() - b.datetime.getTime()));
             setNewlyAddedAppointmentId(newAppointment.id);
             setTimeout(() => setNewlyAddedAppointmentId(null), 2000);
-            showToast('Agendamento criado com sucesso!', 'success');
-            showNotificationOptionsModal(newAppointment, 'new');
+            
+            if (isRetroactive) {
+                showToast('Agendamento retroativo adicionado como finalizado!', 'success');
+            } else {
+                showToast('Agendamento criado com sucesso!', 'success');
+                showNotificationOptionsModal(newAppointment, 'new');
+            }
         }
-    }, [clients, services, monthlyPackage.price, showToast, setClients, setAppointments, showNotificationOptionsModal]);
+    }, [clients, services, monthlyPackage.price, showToast, setClients, setAppointments, showNotificationOptionsModal, showModal, closeModal]);
 
     const handleUpdateAppointment = useCallback((updatedAppointment: Appointment) => {
+        const isRetroactive = new Date(updatedAppointment.datetime) < new Date();
+        // If appointment is moved to the past, and it's not already finished/cancelled, mark as completed.
+        if (isRetroactive && ['scheduled', 'confirmed', 'delayed'].includes(updatedAppointment.status)) {
+            updatedAppointment.status = 'completed';
+            showToast('Agendamento movido para o passado e marcado como finalizado!', 'success');
+        } else {
+            showToast('Agendamento atualizado!', 'success');
+        }
+
         setAppointments(prev => 
             prev.map(a => a.id === updatedAppointment.id ? updatedAppointment : a)
             .sort((a, b) => a.datetime.getTime() - b.datetime.getTime())
         );
-        showToast('Agendamento atualizado!', 'success');
-        const type = updatedAppointment.status === 'cancelled' ? 'cancel' : 'update';
-        showNotificationOptionsModal(updatedAppointment, type);
+        
+        // Do not show notification options for retroactive appointments, but do for cancellations
+        if (!isRetroactive && updatedAppointment.status !== 'cancelled') {
+            showNotificationOptionsModal(updatedAppointment, 'update');
+        } else if (updatedAppointment.status === 'cancelled') {
+            showNotificationOptionsModal(updatedAppointment, 'cancel');
+        }
     }, [showToast, setAppointments, showNotificationOptionsModal]);
 
     const handleMarkAsDelayed = useCallback((appointment: Appointment) => {
