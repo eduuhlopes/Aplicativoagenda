@@ -31,6 +31,12 @@ const ArrowDownIcon = () => (
     </svg>
 );
 
+const ImportIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+      <path d="M8 9a3 3 0 100-6 3 3 0 000 6zM8 11a6 6 0 016 6H2a6 6 0 016-6zM16 11a1 1 0 10-2 0v1h-1a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1v-1z" />
+    </svg>
+);
+
 
 const getStatusChip = (status: AppointmentStatus) => {
     const statusStyles: { [key in AppointmentStatus]: { text: string; bg: string; textCol: string; } } = {
@@ -161,11 +167,12 @@ interface ClientListProps {
     onEditClient: (client: EnrichedClient) => void;
     viewingHistoryFor?: Client | null;
     onClearHistoryView: () => void;
+    onImportClients: () => void;
 }
 
 type SortOption = 'spent' | 'recent' | 'inactive';
 
-const ClientList: React.FC<ClientListProps> = ({ clients, appointments, onAddClient, onEditClient, viewingHistoryFor, onClearHistoryView }) => {
+const ClientList: React.FC<ClientListProps> = ({ clients, appointments, onAddClient, onEditClient, viewingHistoryFor, onClearHistoryView, onImportClients }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [sortOption, setSortOption] = useState<SortOption>('spent');
 
@@ -251,6 +258,14 @@ const ClientList: React.FC<ClientListProps> = ({ clients, appointments, onAddCli
                         <option value="recent">Mais Recentes</option>
                         <option value="inactive">Inativas</option>
                     </select>
+                    <button 
+                        onClick={onImportClients}
+                        className="flex-shrink-0 px-4 h-12 bg-white border-2 border-dashed border-[var(--accent)] text-[var(--primary)] font-bold rounded-lg shadow-sm hover:bg-[var(--highlight)] transition-all active:scale-95 flex items-center justify-center gap-2"
+                        title="Sincronizar clientes da agenda"
+                    >
+                        <ImportIcon />
+                        Sincronizar
+                    </button>
                     <button 
                         onClick={onAddClient} 
                         className="flex-shrink-0 px-4 h-12 bg-[var(--primary)] text-white font-bold rounded-lg shadow-md hover:bg-[var(--primary-hover)] transition-transform transform hover:scale-105 active:scale-95 flex items-center justify-center gap-2"

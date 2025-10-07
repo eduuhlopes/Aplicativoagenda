@@ -455,19 +455,37 @@ const App: React.FC = () => {
 
     // CRUD Handlers
     const handleScheduleAppointment = useCallback((newAppointmentData: Omit<Appointment, 'id' | 'status'>) => {
+        // Automatically add new client if they don't exist
+        const clientExists = clients.some(client => 
+            client.phone.replace(/\D/g, '') === newAppointmentData.clientPhone.replace(/\D/g, '')
+        );
+
+        if (!clientExists && newAppointmentData.clientName && newAppointmentData.clientPhone) {
+            const newClient: Client = {
+                id: Date.now() + 1, // +1 to avoid collision with appointment ID
+                name: newAppointmentData.clientName,
+                phone: newAppointmentData.clientPhone,
+                email: newAppointmentData.clientEmail,
+                observations: ''
+            };
+            setClients(prev => [...prev, newClient]);
+            showToast(`Nova cliente "${newClient.name}" adicionada à lista!`, 'success');
+        }
+        
         const newAppointment: Appointment = {
             ...newAppointmentData,
             id: Date.now(),
             status: 'scheduled',
         };
+
         setAppointments(prev => [...prev, newAppointment].sort((a,b) => a.datetime.getTime() - b.datetime.getTime()));
         setNewlyAddedAppointmentId(newAppointment.id);
-        setTimeout(() => setNewlyAddedAppointmentId(null), 2000); // Animation duration is 1.5s
+        setTimeout(() => setNewlyAddedAppointmentId(null), 2000);
         showToast('Agendamento criado com sucesso!', 'success');
         
         showNotificationOptionsModal(newAppointment, 'new');
 
-    }, [showToast, setAppointments, showNotificationOptionsModal]);
+    }, [clients, showToast, setClients, setAppointments, showNotificationOptionsModal]);
 
     const handleUpdateAppointment = useCallback((updatedAppointment: Appointment) => {
         setAppointments(prev => prev.map(a => a.id === updatedAppointment.id ? updatedAppointment : a));
@@ -532,6 +550,43 @@ const App: React.FC = () => {
         setAppointmentRequests(prev => prev.filter(req => req.id !== requestId));
         showToast('Solicitação rejeitada.', 'success');
     }, [setAppointmentRequests, showToast]);
+    
+    // Client Sync Handler
+    const handleImportClientsFromAppointments = useCallback(() => {
+        const existingClientPhones = new Set(clients.map(c => c.phone.replace(/\D/g, '')));
+        const newClientsMap = new Map<string, Omit<Client, 'id'>>();
+
+        appointments.forEach(appt => {
+            const sanitizedPhone = appt.clientPhone.replace(/\D/g, '');
+            if (sanitizedPhone && !existingClientPhones.has(sanitizedPhone) && !newClientsMap.has(sanitizedPhone)) {
+                newClientsMap.set(sanitizedPhone, {
+                    name: appt.clientName,
+                    phone: appt.clientPhone,
+                    email: appt.clientEmail,
+                    observations: ''
+                });
+            }
+        });
+
+        const newClientsToAdd = Array.from(newClientsMap.values()).map((c, index) => ({
+            ...c,
+            id: Date.now() + index
+        }));
+
+        if (newClientsToAdd.length > 0) {
+            showModal(
+                'Importar Clientes',
+                `Encontramos ${newClientsToAdd.length} cliente(s) em seus agendamentos que não estão na sua lista. Deseja adicioná-los agora?`,
+                () => {
+                    setClients(prev => [...prev, ...newClientsToAdd]);
+                    showToast(`${newClientsToAdd.length} nova(s) cliente(s) adicionada(s)!`, 'success');
+                    closeModal();
+                }
+            );
+        } else {
+            showToast('Nenhuma nova cliente encontrada nos agendamentos.', 'success');
+        }
+    }, [appointments, clients, showModal, showToast, setClients, closeModal]);
 
 
     // Settings Handlers
@@ -639,6 +694,7 @@ const App: React.FC = () => {
                         onEditClient={client => handleOpenClientForm(client)} 
                         viewingHistoryFor={viewingClientHistory}
                         onClearHistoryView={() => setViewingClientHistory(null)}
+                        onImportClients={handleImportClientsFromAppointments}
                     />
                 );
             case 'financeiro':

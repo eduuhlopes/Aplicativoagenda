@@ -1,13 +1,20 @@
 // @ts-nocheck
 // This file uses the globally available 'emailjs' object from the CDN script.
 
-// TODO: Replace with your actual EmailJS credentials from your account dashboard.
-const SERVICE_ID = 'YOUR_SERVICE_ID';
-const TEMPLATE_ID_APPOINTMENT_CONFIRMATION = 'YOUR_APPOINTMENT_TEMPLATE_ID';
-const TEMPLATE_ID_REQUEST_CONFIRMATION = 'YOUR_REQUEST_CONFIRMATION_TEMPLATE_ID';
-const TEMPLATE_ID_ADMIN_NOTIFICATION = 'YOUR_ADMIN_NOTIFICATION_TEMPLATE_ID';
-// TODO: Set the email address where you want to receive admin notifications.
-const ADMIN_EMAIL = 'admin@example.com'; 
+// --- ATENÇÃO: Configure suas credenciais do EmailJS abaixo ---
+// Acesse seu painel em https://dashboard.emailjs.com/ para obter estes valores.
+
+// 1. Service ID obtido de "Email Services".
+const SERVICE_ID = 'service_m7lhjom'; 
+
+// 2. Vá em "Email Templates", copie o ID de cada template e cole abaixo.
+//    O ID é um código, não o nome do template (ex: template_ab12cde).
+const TEMPLATE_ID_APPOINTMENT_CONFIRMATION = 'template_rj9xx0r'; // OK! Este é o ID para o template "Danny Lopes".
+const TEMPLATE_ID_REQUEST_CONFIRMATION = 'SEU_TEMPLATE_ID_SOLICITACAO';     // Para o email automático que a cliente recebe ao solicitar.
+const TEMPLATE_ID_ADMIN_NOTIFICATION = 'SEU_TEMPLATE_ID_ADMIN';         // Para notificar o salão sobre a nova solicitação.
+
+// 3. Defina o email que receberá as notificações de novos agendamentos.
+const ADMIN_EMAIL = 'seu-email-de-admin@exemplo.com'; // SUBSTITUA PELO SEU EMAIL DE ADMIN
 
 /*
   Your EmailJS templates should use the following variables:
@@ -38,6 +45,13 @@ export interface TemplateParams {
 
 const sendEmail = (templateId: string, params: TemplateParams): Promise<void> => {
     return new Promise((resolve, reject) => {
+        // Verifica se os IDs foram substituídos para evitar erros
+        if (SERVICE_ID.includes('xxxx') || templateId.includes('SEU_TEMPLATE')) {
+            const errorMessage = "EmailJS não configurado. Verifique SERVICE_ID e TEMPLATE_IDs em utils/emailService.ts";
+            console.error(errorMessage);
+            return reject(new Error(errorMessage));
+        }
+        
         emailjs.send(SERVICE_ID, templateId, params)
             .then((response) => {
                 console.log('EMAIL SUCCESS!', response.status, response.text);
