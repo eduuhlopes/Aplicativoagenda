@@ -454,41 +454,94 @@ const App: React.FC = () => {
     }, [closeModal, professionalsList, showToast, showModal]);
 
     // CRUD Handlers
-    const handleScheduleAppointment = useCallback((newAppointmentData: Omit<Appointment, 'id' | 'status'>) => {
+    const handleScheduleAppointment = useCallback((newAppointmentData: Omit<Appointment, 'id' | 'status'> & { isPackage?: boolean }) => {
+        const { isPackage, ...appointmentCoreData } = newAppointmentData;
+
         // Automatically add new client if they don't exist
         const clientExists = clients.some(client => 
-            client.phone.replace(/\D/g, '') === newAppointmentData.clientPhone.replace(/\D/g, '')
+            client.phone.replace(/\D/g, '') === appointmentCoreData.clientPhone.replace(/\D/g, '')
         );
 
-        if (!clientExists && newAppointmentData.clientName && newAppointmentData.clientPhone) {
+        if (!clientExists && appointmentCoreData.clientName && appointmentCoreData.clientPhone) {
             const newClient: Client = {
                 id: Date.now() + 1, // +1 to avoid collision with appointment ID
-                name: newAppointmentData.clientName,
-                phone: newAppointmentData.clientPhone,
-                email: newAppointmentData.clientEmail,
+                name: appointmentCoreData.clientName,
+                phone: appointmentCoreData.clientPhone,
+                email: appointmentCoreData.clientEmail,
                 observations: ''
             };
             setClients(prev => [...prev, newClient]);
             showToast(`Nova cliente "${newClient.name}" adicionada à lista!`, 'success');
         }
-        
-        const newAppointment: Appointment = {
-            ...newAppointmentData,
-            id: Date.now(),
-            status: 'scheduled',
-        };
 
-        setAppointments(prev => [...prev, newAppointment].sort((a,b) => a.datetime.getTime() - b.datetime.getTime()));
-        setNewlyAddedAppointmentId(newAppointment.id);
-        setTimeout(() => setNewlyAddedAppointmentId(null), 2000);
-        showToast('Agendamento criado com sucesso!', 'success');
-        
-        showNotificationOptionsModal(newAppointment, 'new');
+        if (isPackage) {
+            const packageId = `pkg-${Date.now()}`;
+            const firstAppointmentDate = new Date(appointmentCoreData.datetime);
+            const appointmentsToCreate: Appointment[] = [];
+            
+            const serviceMao = services.find(s => s.name === 'Manicure');
+            const servicePeMao = services.find(s => s.name === 'Pé+Mão');
+            
+            if (!serviceMao || !servicePeMao) {
+                showToast('Serviços "Manicure" ou "Pé+Mão" não encontrados para criar o pacote.', 'error');
+                return;
+            }
+            
+            const packagePricePerSession = monthlyPackage.price / 4;
 
-    }, [clients, showToast, setClients, setAppointments, showNotificationOptionsModal]);
+            const packageServicesRotation = [
+                [{ ...serviceMao, value: packagePricePerSession }],
+                [{ ...servicePeMao, value: packagePricePerSession }],
+                [{ ...serviceMao, value: packagePricePerSession }],
+                [{ ...servicePeMao, value: packagePricePerSession }],
+            ];
+
+            for (let i = 0; i < 4; i++) {
+                const appointmentDate = new Date(firstAppointmentDate);
+                appointmentDate.setDate(firstAppointmentDate.getDate() + (i * 7));
+                
+                const servicesForThisWeek = packageServicesRotation[i];
+                const totalDuration = servicesForThisWeek.reduce((sum, s) => sum + s.duration, 0);
+                const endTime = new Date(appointmentDate.getTime() + totalDuration * 60 * 1000);
+
+                const newAppt: Appointment = {
+                    ...appointmentCoreData,
+                    id: Date.now() + i,
+                    status: 'scheduled',
+                    datetime: appointmentDate,
+                    endTime: endTime,
+                    services: servicesForThisWeek,
+                    isPackageAppointment: true,
+                    packageId: packageId,
+                };
+                appointmentsToCreate.push(newAppt);
+            }
+            
+            setAppointments(prev => [...prev, ...appointmentsToCreate].sort((a,b) => a.datetime.getTime() - b.datetime.getTime()));
+            setNewlyAddedAppointmentId(appointmentsToCreate[0].id);
+            setTimeout(() => setNewlyAddedAppointmentId(null), 2000);
+            showToast('Pacote de 4 agendamentos criado com sucesso!', 'success');
+            showNotificationOptionsModal(appointmentsToCreate[0], 'new');
+        } else {
+            const newAppointment: Appointment = {
+                ...appointmentCoreData,
+                id: Date.now(),
+                status: 'scheduled',
+            };
+
+            setAppointments(prev => [...prev, newAppointment].sort((a,b) => a.datetime.getTime() - b.datetime.getTime()));
+            setNewlyAddedAppointmentId(newAppointment.id);
+            setTimeout(() => setNewlyAddedAppointmentId(null), 2000);
+            showToast('Agendamento criado com sucesso!', 'success');
+            showNotificationOptionsModal(newAppointment, 'new');
+        }
+    }, [clients, services, monthlyPackage.price, showToast, setClients, setAppointments, showNotificationOptionsModal]);
 
     const handleUpdateAppointment = useCallback((updatedAppointment: Appointment) => {
-        setAppointments(prev => prev.map(a => a.id === updatedAppointment.id ? updatedAppointment : a));
+        setAppointments(prev => 
+            prev.map(a => a.id === updatedAppointment.id ? updatedAppointment : a)
+            .sort((a, b) => a.datetime.getTime() - b.datetime.getTime())
+        );
         showToast('Agendamento atualizado!', 'success');
         const type = updatedAppointment.status === 'cancelled' ? 'cancel' : 'update';
         showNotificationOptionsModal(updatedAppointment, type);
@@ -678,7 +731,8 @@ const App: React.FC = () => {
                         <CalendarView 
                             appointments={appointments} 
                             blockedSlots={blockedSlots} 
-                            onEditAppointment={handleOpenForm} 
+                            onEditAppointment={handleOpenForm}
+                            onUpdateAppointment={handleUpdateAppointment}
                             newlyAddedAppointmentId={newlyAddedAppointmentId}
                             professionals={professionalsList}
                             currentUser={currentUser}
@@ -823,6 +877,7 @@ const App: React.FC = () => {
                         professionals={professionalsList}
                         currentUser={currentUser}
                         showToast={showToast}
+                        monthlyPackagePrice={monthlyPackage.price}
                     />
                 }
             </div>

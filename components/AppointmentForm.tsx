@@ -4,7 +4,7 @@ import { Appointment, BlockedSlot, AppointmentStatus, Service, Client, Professio
 import DateTimePickerModal from './DateTimePickerModal';
 
 interface AppointmentFormProps {
-    onSchedule: (newAppointmentData: Omit<Appointment, 'id' | 'status'>) => void;
+    onSchedule: (newAppointmentData: Omit<Appointment, 'id' | 'status'> & { isPackage?: boolean }) => void;
     appointmentToEdit: Appointment | null;
     onUpdate: (updatedAppointment: Appointment) => void;
     onCancelEdit: () => void;
@@ -17,6 +17,7 @@ interface AppointmentFormProps {
     professionals: Professional[];
     currentUser: Professional;
     showToast: (message: string, type?: 'success' | 'error') => void;
+    monthlyPackagePrice: number;
 }
 
 const CheckIcon = () => (
@@ -39,7 +40,7 @@ const LoadingSpinner = () => (
 );
 
 
-const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointmentToEdit, onUpdate, onCancelEdit, appointments, blockedSlots, onMarkAsDelayed, services, clients, onViewClientHistory, professionals, currentUser, showToast }) => {
+const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointmentToEdit, onUpdate, onCancelEdit, appointments, blockedSlots, onMarkAsDelayed, services, clients, onViewClientHistory, professionals, currentUser, showToast, monthlyPackagePrice }) => {
     const [clientName, setClientName] = useState('');
     const [clientPhone, setClientPhone] = useState('');
     const [clientEmail, setClientEmail] = useState('');
@@ -52,6 +53,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
     const [modifiedServiceIndices, setModifiedServiceIndices] = useState<Set<number>>(new Set());
     const [isSuccess, setIsSuccess] = useState(false);
     const [isOrganizing, setIsOrganizing] = useState(false);
+    const [isPackage, setIsPackage] = useState(false);
     
     // State for client autocomplete and history link
     const [suggestions, setSuggestions] = useState<Client[]>([]);
@@ -79,6 +81,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
             setModifiedServiceIndices(new Set());
             const existingClient = clients.find(c => c.phone === appointmentToEdit.clientPhone);
             setSelectedClient(existingClient || null);
+            setIsPackage(appointmentToEdit.isPackageAppointment || false);
         } else {
             resetForm();
             // Default to current user if not admin, otherwise leave blank
@@ -102,18 +105,27 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
         };
     }, []);
 
-     // Sync selected client with phone number (for manual entry)
+     // Effect for phone number lookup
     useEffect(() => {
-        if (!selectedClient && clientPhone) {
-            const matchedClient = clients.find(c => c.phone === clientPhone);
+        const sanitizedPhone = clientPhone.replace(/\D/g, '');
+        if (sanitizedPhone.length >= 10) {
+            const matchedClient = clients.find(c => c.phone.replace(/\D/g, '') === sanitizedPhone);
             if (matchedClient) {
+                // Auto-fill only if name is empty, to avoid overwriting user input
+                if (!clientName.trim()) {
+                    setClientName(matchedClient.name);
+                }
+                if (!clientEmail.trim() && matchedClient.email) {
+                    setClientEmail(matchedClient.email);
+                }
                 setSelectedClient(matchedClient);
+            } else {
+                setSelectedClient(null);
             }
+        } else {
+            setSelectedClient(null);
         }
-        if (selectedClient && clientPhone !== selectedClient.phone) {
-             setSelectedClient(null);
-        }
-    }, [clientPhone, clients, selectedClient]);
+    }, [clientPhone, clients, clientName, clientEmail]);
 
 
     const resetForm = () => {
@@ -129,6 +141,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
         setSuggestions([]);
         setIsSuggestionsVisible(false);
         setSelectedClient(null);
+        setIsPackage(false);
     };
 
     const handleClientNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -137,7 +150,8 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
 
         if (value.length > 1) {
             const filteredSuggestions = clients.filter(client => 
-                client.name.toLowerCase().includes(value.toLowerCase())
+                client.name.toLowerCase().includes(value.toLowerCase()) || 
+                client.phone.replace(/\D/g, '').includes(value)
             );
             setSuggestions(filteredSuggestions);
             setIsSuggestionsVisible(true);
@@ -233,12 +247,19 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
     };
 
     const totalValue = useMemo(() => {
+        if (isPackage && !appointmentToEdit) return monthlyPackagePrice;
         return selectedServices.reduce((sum, service) => sum + service.value, 0);
-    }, [selectedServices]);
+    }, [selectedServices, isPackage, appointmentToEdit, monthlyPackagePrice]);
     
     const totalDuration = useMemo(() => {
+        // For a new package, we need a default duration for the time picker.
+        // The actual duration will be set per appointment in App.tsx.
+        // We'll use the duration of Manicure (the first service) as a placeholder.
+        if (isPackage && !appointmentToEdit) {
+            return services.find(s => s.name === 'Manicure')?.duration || 60;
+        }
         return selectedServices.reduce((sum, service) => sum + service.duration, 0);
-    }, [selectedServices]);
+    }, [selectedServices, isPackage, appointmentToEdit, services]);
 
     const handleDateTimeConfirm = (data: { date: Date }) => {
         setSelectedDateTime(data.date);
@@ -276,7 +297,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
         e.preventDefault();
         if (isSuccess) return; // Prevent multiple submissions
 
-        if (!clientName || !clientPhone || !professionalUsername || selectedServices.length === 0 || !selectedDateTime) {
+        if (!clientName || !clientPhone || !professionalUsername || (!isPackage && selectedServices.length === 0) || !selectedDateTime) {
             alert("Por favor, preencha todos os detalhes do agendamento, incluindo a profissional e data/hora.");
             return;
         }
@@ -284,7 +305,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
         const finalDateTime = new Date(selectedDateTime);
         const finalEndTime = new Date(finalDateTime.getTime() + totalDuration * 60 * 1000);
 
-        if (finalDateTime >= finalEndTime) {
+        if (!isPackage && finalDateTime >= finalEndTime) {
             alert("A duração do serviço deve ser positiva, resultando em um horário de término maior que o de início.");
             return;
         }
@@ -301,6 +322,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
             endTime: finalEndTime,
             observations,
             category,
+            isPackage,
         };
 
         if (appointmentToEdit) {
@@ -347,7 +369,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
 
             <div style={{ visibility: isSuccess ? 'hidden' : 'visible' }}>
                 <div className="flex justify-between items-start">
-                    <h2 className="text-3xl font-bold text-[var(--text-dark)] mb-4">{appointmentToEdit ? 'Editar Agendamento' : 'Novo Agendamento'}</h2>
+                    <h2 className="text-3xl font-bold text-[var(--text-dark)] mb-4">{appointmentToEdit?.isPackageAppointment && '📦 '} {appointmentToEdit ? 'Editar Agendamento' : 'Novo Agendamento'}</h2>
                     <button type="button" onClick={onCancelEdit} className="p-2 -mt-2 -mr-2 text-gray-400 hover:text-gray-600">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
@@ -358,7 +380,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                         <label htmlFor="client-name" className="block text-md font-medium text-[var(--text-dark)] mb-1">
                             Nome da Cliente:
                         </label>
-                        <input type="text" id="client-name" value={clientName} onChange={handleClientNameChange} placeholder="Digite o nome da cliente" className={inputClasses} required autoComplete="off" />
+                        <input type="text" id="client-name" value={clientName} onChange={handleClientNameChange} onFocus={handleClientNameChange} placeholder="Digite para buscar..." className={inputClasses} required autoComplete="off" />
                         {isSuggestionsVisible && suggestions.length > 0 && (
                             <div ref={suggestionBoxRef} className="absolute z-10 w-full mt-1 bg-white border border-[var(--border)] rounded-lg shadow-lg max-h-48 overflow-y-auto">
                                 {suggestions.map(client => (
@@ -422,70 +444,93 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                     </select>
                 </div>
                 
-                {/* Services Section */}
-                <div>
-                    <label htmlFor="service-select" className="block text-md font-medium text-[var(--text-dark)] mb-1">Serviços:</label>
-                    <div className="flex gap-2">
-                        <select id="service-select" value={serviceToAdd} onChange={(e) => setServiceToAdd(e.target.value)} className={inputClasses} disabled={!professionalUsername}>
-                            <option value="">{professionalUsername ? 'Selecione um serviço' : 'Selecione uma profissional primeiro'}</option>
-                            {availableServices.map(s => <option key={s.name} value={s.name} title={`Duração: ${s.duration} min`}>{s.name}</option>)}
-                        </select>
-                        <button type="button" onClick={handleAddService} className="px-4 py-2 bg-[var(--secondary)] text-white font-semibold rounded-lg shadow-sm hover:opacity-90 transition-all active:scale-95" disabled={!serviceToAdd || selectedServices.some(s => s.name === serviceToAdd)}>
-                            Adicionar
-                        </button>
+                {!appointmentToEdit && (
+                    <div className="flex items-center gap-3 p-3 bg-amber-50 border border-dashed border-amber-300 rounded-lg">
+                        <input 
+                            type="checkbox" 
+                            id="package-checkbox" 
+                            checked={isPackage}
+                            onChange={(e) => setIsPackage(e.target.checked)}
+                            className="h-5 w-5 rounded text-[var(--primary)] focus:ring-[var(--primary-hover)] flex-shrink-0"
+                        />
+                        <label htmlFor="package-checkbox" className="font-semibold text-amber-800 cursor-pointer">
+                            Agendar Pacote Mensal (Pé+Mão - 4 semanas)
+                        </label>
                     </div>
-                </div>
-
-                {selectedServices.length > 0 && (
-                    <div className="space-y-3 p-3 bg-[var(--highlight)] border border-[var(--border)] rounded-lg">
-                        {selectedServices.map((service, index) => {
-                            const isModified = modifiedServiceIndices.has(index);
-                            return (
-                            <div key={index} className={`flex items-center gap-2 p-2 bg-white rounded-md shadow-sm border-2 transition-colors ${isModified ? 'border-[var(--info)]' : 'border-transparent'}`}>
-                                <select 
-                                    value={service.name} 
-                                    onChange={(e) => handleServiceChange(index, e.target.value)}
-                                    className="text-[var(--text-dark)] font-medium flex-grow bg-white border border-[var(--border)] rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-[var(--accent)] focus:border-[var(--accent)] transition-colors py-1 px-2"
-                                >
-                                    {availableServices.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                )}
+                
+                {isPackage && !appointmentToEdit ? (
+                    <div className="p-3 bg-[var(--highlight)] border border-[var(--border)] rounded-lg text-center">
+                        <p className="font-bold text-[var(--text-dark)]">Pacote Mensal Selecionado</p>
+                        <p className="text-sm text-[var(--secondary)]">4 agendamentos semanais serão criados (Mão, Pé+Mão, Mão, Pé+Mão).</p>
+                    </div>
+                ) : (
+                    <>
+                        {/* Services Section */}
+                        <div>
+                            <label htmlFor="service-select" className="block text-md font-medium text-[var(--text-dark)] mb-1">Serviços:</label>
+                            <div className="flex gap-2">
+                                <select id="service-select" value={serviceToAdd} onChange={(e) => setServiceToAdd(e.target.value)} className={inputClasses} disabled={!professionalUsername}>
+                                    <option value="">{professionalUsername ? 'Selecione um serviço' : 'Selecione uma profissional primeiro'}</option>
+                                    {availableServices.map(s => <option key={s.name} value={s.name} title={`Duração: ${s.duration} min`}>{s.name}</option>)}
                                 </select>
-                                
-                                <div className="flex items-baseline gap-1">
-                                    <input type="number" value={service.duration} onChange={(e) => handleServiceDurationChange(index, e.target.value)} step="5" min="0" className="w-16 px-2 py-1 bg-white border border-[var(--border)] rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
-                                    <span className="text-xs text-[var(--secondary)]">min</span>
-                                </div>
-                            
-                                <div className="flex items-baseline gap-1">
-                                    <span className="text-sm text-[var(--secondary)]">R$</span>
-                                    <input type="number" value={service.value} onChange={(e) => handleServiceValueChange(index, e.target.value)} step="0.01" min="0" className="w-20 px-2 py-1 bg-white border border-[var(--border)] rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
-                                </div>
-
-                                {isModified && (
-                                    <button type="button" onClick={() => handleSaveServiceChange(index)} title="Salvar alteração do serviço" className="p-1 text-[var(--success)] hover:bg-green-100 rounded-full transition-transform active:scale-90">
-                                        <CheckIcon />
-                                    </button>
-                                )}
-                            
-                                <button type="button" onClick={() => handleRemoveService(index)} className="p-1 text-[var(--danger)] hover:bg-red-100 rounded-full transition-transform active:scale-90">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
+                                <button type="button" onClick={handleAddService} className="px-4 py-2 bg-[var(--secondary)] text-white font-semibold rounded-lg shadow-sm hover:opacity-90 transition-all active:scale-95" disabled={!serviceToAdd || selectedServices.some(s => s.name === serviceToAdd)}>
+                                    Adicionar
                                 </button>
                             </div>
-                            );
-                        })}
-                        <div className="text-xs text-center text-[var(--secondary)] italic mt-2 p-2 bg-blue-50 rounded-md border border-dashed border-blue-200">
-                           Dica: Você pode editar o valor e a duração de cada serviço individualmente.
                         </div>
-                        <div className="border-t border-[var(--border)] pt-2 mt-2 flex justify-between items-center">
-                            <div className="text-left">
-                                <span className="text-md font-bold text-[var(--text-dark)]">Duração:</span>
-                                <span className="text-lg font-extrabold text-[var(--secondary)] ml-2">{totalDuration} min</span>
+
+                        {selectedServices.length > 0 && (
+                            <div className="space-y-3 p-3 bg-[var(--highlight)] border border-[var(--border)] rounded-lg">
+                                {selectedServices.map((service, index) => {
+                                    const isModified = modifiedServiceIndices.has(index);
+                                    return (
+                                    <div key={index} className={`flex items-center gap-2 p-2 bg-white rounded-md shadow-sm border-2 transition-colors ${isModified ? 'border-[var(--info)]' : 'border-transparent'}`}>
+                                        <select 
+                                            value={service.name} 
+                                            onChange={(e) => handleServiceChange(index, e.target.value)}
+                                            className="text-[var(--text-dark)] font-medium flex-grow bg-white border border-[var(--border)] rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-[var(--accent)] focus:border-[var(--accent)] transition-colors py-1 px-2"
+                                        >
+                                            {availableServices.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                                        </select>
+                                        
+                                        <div className="flex items-baseline gap-1">
+                                            <input type="number" value={service.duration} onChange={(e) => handleServiceDurationChange(index, e.target.value)} step="5" min="0" className="w-16 px-2 py-1 bg-white border border-[var(--border)] rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
+                                            <span className="text-xs text-[var(--secondary)]">min</span>
+                                        </div>
+                                    
+                                        <div className="flex items-baseline gap-1">
+                                            <span className="text-sm text-[var(--secondary)]">R$</span>
+                                            <input type="number" value={service.value} onChange={(e) => handleServiceValueChange(index, e.target.value)} step="0.01" min="0" className="w-20 px-2 py-1 bg-white border border-[var(--border)] rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
+                                        </div>
+
+                                        {isModified && (
+                                            <button type="button" onClick={() => handleSaveServiceChange(index)} title="Salvar alteração do serviço" className="p-1 text-[var(--success)] hover:bg-green-100 rounded-full transition-transform active:scale-90">
+                                                <CheckIcon />
+                                            </button>
+                                        )}
+                                    
+                                        <button type="button" onClick={() => handleRemoveService(index)} className="p-1 text-[var(--danger)] hover:bg-red-100 rounded-full transition-transform active:scale-90">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
+                                        </button>
+                                    </div>
+                                    );
+                                })}
                             </div>
-                            <div className="text-right">
-                                <span className="text-lg font-bold text-[var(--text-dark)]">Total:</span>
-                                <span className="text-2xl font-extrabold text-[var(--success)] ml-2">
-                                    {totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                                </span>
-                            </div>
+                        )}
+                    </>
+                )}
+                {(selectedServices.length > 0 || isPackage) && (
+                    <div className="border-t border-[var(--border)] pt-2 mt-2 flex justify-between items-center">
+                        <div className="text-left">
+                            <span className="text-md font-bold text-[var(--text-dark)]">Duração:</span>
+                            <span className="text-lg font-extrabold text-[var(--secondary)] ml-2">{totalDuration} min</span>
+                        </div>
+                        <div className="text-right">
+                            <span className="text-lg font-bold text-[var(--text-dark)]">Total:</span>
+                            <span className="text-2xl font-extrabold text-[var(--success)] ml-2">
+                                {totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                            </span>
                         </div>
                     </div>
                 )}
@@ -528,7 +573,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                 </div>
 
                 <div className="mt-6 flex flex-col items-center">
-                    <button type="submit" className="w-full py-3 px-4 btn-primary-gradient text-white font-bold text-lg rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--primary)] transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:grayscale" disabled={!clientName || !clientPhone || !professionalUsername || selectedServices.length === 0 || !selectedDateTime || isSuccess}>
+                    <button type="submit" className="w-full py-3 px-4 btn-primary-gradient text-white font-bold text-lg rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--primary)] transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:grayscale" disabled={!clientName || !clientPhone || !professionalUsername || (!isPackage && selectedServices.length === 0) || !selectedDateTime || isSuccess}>
                         {appointmentToEdit ? 'Salvar Alterações' : 'Concluir Agendamento'}
                     </button>
                     <p className="text-center text-sm text-[var(--secondary)] italic mt-2">

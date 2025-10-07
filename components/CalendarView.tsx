@@ -8,6 +8,7 @@ interface CalendarViewProps {
     appointments: Appointment[];
     blockedSlots: BlockedSlot[];
     onEditAppointment: (appointment: Appointment) => void;
+    onUpdateAppointment: (appointment: Appointment) => void;
     newlyAddedAppointmentId?: number | null;
     professionals: Professional[];
     currentUser: Professional;
@@ -44,7 +45,7 @@ const getContrastColor = (hexcolor: string): string => {
 };
 
 
-const CalendarView: React.FC<CalendarViewProps> = ({ appointments, blockedSlots, onEditAppointment, newlyAddedAppointmentId, professionals, currentUser }) => {
+const CalendarView: React.FC<CalendarViewProps> = ({ appointments, blockedSlots, onEditAppointment, onUpdateAppointment, newlyAddedAppointmentId, professionals, currentUser }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [width] = useWindowSize();
     const isMobile = width < 640; // sm breakpoint
@@ -100,6 +101,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ appointments, blockedSlots,
             appointments: filteredAppointments,
             blockedSlots,
             onEditAppointment,
+            onUpdateAppointment,
             newlyAddedAppointmentId,
             professionals,
         };
@@ -173,6 +175,7 @@ interface ViewProps {
     appointments: Appointment[];
     blockedSlots: BlockedSlot[];
     onEditAppointment: (a: Appointment) => void;
+    onUpdateAppointment: (a: Appointment) => void;
     newlyAddedAppointmentId?: number | null;
     professionals: Professional[];
 }
@@ -251,7 +254,7 @@ const AgendaListView: React.FC<ViewProps> = ({ date, appointments, blockedSlots,
                                              {appt.datetime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                                         </div>
                                         <div className="flex-grow">
-                                            <p className="font-bold text-[var(--text-dark)]">{appt.clientName}</p>
+                                            <p className="font-bold text-[var(--text-dark)]">{appt.isPackageAppointment && '📦 '}{appt.clientName}</p>
                                             <p className="text-sm text-[var(--secondary)]">{appt.services.map(s => s.name).join(', ')}</p>
                                         </div>
                                         {professional && (
@@ -312,7 +315,7 @@ const MonthView: React.FC<ViewProps & { onDayClick: (day: Date) => void }> = ({ 
                                      return (
                                         <div key={a.id} onClick={(e) => { e.stopPropagation(); onEditAppointment(a); }} className={`flex items-center gap-1.5 appointment-pill ${isNew ? 'animate-new-item' : ''}`} style={{ backgroundColor: professionalColor, color: getContrastColor(professionalColor) }}>
                                             {professional && <span className="text-xs font-bold opacity-75">{getInitials(professional.name)}</span>}
-                                            <span className="truncate flex-grow">{a.clientName}</span>
+                                            <span className="truncate flex-grow">{a.isPackageAppointment && '📦 '}{a.clientName}</span>
                                         </div>
                                      );
                                 })}
@@ -328,36 +331,154 @@ const MonthView: React.FC<ViewProps & { onDayClick: (day: Date) => void }> = ({ 
     );
 };
 
-const TimelineView: React.FC<ViewProps> = ({ date, appointments, blockedSlots, onEditAppointment, newlyAddedAppointmentId, professionals }) => {
+const TimelineView: React.FC<ViewProps & { isDynamicHeight?: boolean }> = ({ date, appointments, blockedSlots, onEditAppointment, onUpdateAppointment, newlyAddedAppointmentId, professionals, isDynamicHeight = false }) => {
+    const timelineRef = React.useRef<HTMLDivElement>(null);
+
     const dayAppointments = appointments
         .filter(a => new Date(a.datetime).toDateString() === date.toDateString() && !['completed', 'cancelled'].includes(a.status))
         .sort((a, b) => a.datetime.getTime() - b.datetime.getTime());
 
     const dayBlockedSlots = blockedSlots.filter(s => new Date(s.date).toDateString() === date.toDateString());
+    
+    const { startHour, endHour } = useMemo(() => {
+        if (!isDynamicHeight || (dayAppointments.length === 0 && dayBlockedSlots.length === 0)) {
+            return { startHour: 7, endHour: 21 };
+        }
+    
+        let minTime = new Date(date);
+        minTime.setHours(23, 59);
+        let maxTime = new Date(date);
+        maxTime.setHours(0, 0);
+    
+        dayAppointments.forEach(a => {
+            if (a.datetime < minTime) minTime = a.datetime;
+            if (a.endTime > maxTime) maxTime = a.endTime;
+        });
+    
+        dayBlockedSlots.forEach(s => {
+            if (s.isFullDay) return;
+            const [startH, startM] = s.startTime!.split(':').map(Number);
+            const slotStart = new Date(date);
+            slotStart.setHours(startH, startM);
+            if (slotStart < minTime) minTime = slotStart;
+            
+            if (s.endTime) {
+                const [endH, endM] = s.endTime.split(':').map(Number);
+                const slotEnd = new Date(date);
+                slotEnd.setHours(endH, endM);
+                 if (slotEnd > maxTime) maxTime = slotEnd;
+            } else {
+                 const slotEnd = new Date(slotStart.getTime() + 30 * 60000);
+                 if (slotEnd > maxTime) maxTime = slotEnd;
+            }
+        });
+    
+        const earliestHour = minTime.getHours();
+        const latestHour = maxTime.getMinutes() > 0 ? maxTime.getHours() + 1 : maxTime.getHours();
+
+        return {
+            startHour: Math.max(0, Math.min(7, earliestHour - 1)),
+            endHour: Math.min(23, Math.max(21, latestHour + 1))
+        };
+    }, [isDynamicHeight, date, dayAppointments, dayBlockedSlots]);
 
     const getPositionAndHeight = (startTime: Date, endTime: Date) => {
         const startOfDay = new Date(startTime);
-        startOfDay.setHours(7, 0, 0, 0); // Timeline starts at 7am
+        startOfDay.setHours(startHour, 0, 0, 0); // Use dynamic startHour
         const top = ((startTime.getTime() - startOfDay.getTime()) / (1000 * 60)) * 1; // 1px per minute
         const height = ((endTime.getTime() - startTime.getTime()) / (1000 * 60)) * 1;
         return { top, height: Math.max(height, 15) }; // min height 15px
     };
+
+    const handleDragStart = (e: React.DragEvent, appointment: Appointment) => {
+        e.dataTransfer.setData('application/json', JSON.stringify({ appointmentId: appointment.id }));
+        e.dataTransfer.effectAllowed = 'move';
+        setTimeout(() => {
+            (e.target as HTMLDivElement).style.visibility = 'hidden';
+        }, 0);
+    };
+
+    const handleDragEnd = (e: React.DragEvent) => {
+        (e.target as HTMLDivElement).style.visibility = 'visible';
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+    };
+
+    const handleDrop = (e: React.DragEvent, dayDate: Date) => {
+        e.preventDefault();
+        if (!timelineRef.current) return;
+
+        const data = e.dataTransfer.getData('application/json');
+        if (!data) return;
+
+        const { appointmentId } = JSON.parse(data);
+        const appointmentToMove = appointments.find(a => a.id === appointmentId);
+
+        if (!appointmentToMove) return;
+
+        const rect = timelineRef.current.getBoundingClientRect();
+        const topOffset = e.clientY - rect.top;
+
+        const minutesFromTimelineStart = Math.max(0, topOffset);
+        const minutesFromMidnight = (startHour * 60) + minutesFromTimelineStart;
+        const roundedMinutes = Math.round(minutesFromMidnight / 15) * 15;
+        
+        const newHour = Math.floor(roundedMinutes / 60);
+        const newMinute = roundedMinutes % 60;
+        
+        const newStartDate = new Date(dayDate); // Use the date of the drop column
+        newStartDate.setHours(newHour, newMinute, 0, 0);
+
+        const durationMs = appointmentToMove.endTime.getTime() - appointmentToMove.datetime.getTime();
+        const newEndDate = new Date(newStartDate.getTime() + durationMs);
+
+        const updatedAppointment: Appointment = {
+            ...appointmentToMove,
+            datetime: newStartDate,
+            endTime: newEndDate,
+        };
+        
+        onUpdateAppointment(updatedAppointment);
+    };
+    
+    if (isDynamicHeight && dayAppointments.length === 0 && dayBlockedSlots.length === 0) {
+        return (
+            <div className="flex items-center justify-center h-24 text-sm text-center text-[var(--secondary)] italic border-t border-[var(--border)]">
+                Nenhum agendamento para este dia.
+            </div>
+        );
+    }
     
     return (
-        <div className="timeline-view">
-             {TIMES.slice(0, -1).map(time => {
-                if(time.endsWith('00')) {
-                    const hour = parseInt(time.split(':')[0]);
+        <div 
+            className="timeline-view" 
+            ref={timelineRef} 
+            onDragOver={handleDragOver} 
+            onDrop={(e) => handleDrop(e, date)}
+            style={{
+                backgroundSize: `100% 60px`,
+                height: `${(endHour - startHour) * 60}px`
+            }}
+        >
+             {Array.from({ length: endHour - startHour }).map((_, i) => {
+                 const hour = startHour + i;
+                 return (
+                    <div key={hour} style={{ top: `${(hour - startHour) * 60}px` }}>
+                        <div className="timeline-hour-label">{`${String(hour).padStart(2, '0')}:00`}</div>
+                    </div>
+                );
+            })}
+            {dayBlockedSlots.map(slot => {
+                if (slot.isFullDay) {
                      return (
-                        <div key={time} style={{ top: `${(hour - 7) * 60}px` }}>
-                            <div className="timeline-hour-label">{time}</div>
+                        <div key={`full-${slot.id}`} className="absolute blocked-slot-visual w-full h-full z-0">
+                            <span className="transform -rotate-15 opacity-75 text-2xl">DIA BLOQUEADO</span>
                         </div>
                     );
                 }
-                return null;
-            })}
-            {dayBlockedSlots.map(slot => {
-                if (slot.isFullDay) return <div key={`full-${slot.id}`} className="absolute bg-red-200 opacity-50 w-full h-full" />;
                 
                 const [startH, startM] = slot.startTime!.split(':').map(Number);
                 const startTime = new Date(date);
@@ -368,11 +489,19 @@ const TimelineView: React.FC<ViewProps> = ({ date, appointments, blockedSlots, o
                     const [endH, endM] = slot.endTime.split(':').map(Number);
                     endTime.setHours(endH, endM);
                 } else {
-                    endTime.setMinutes(endTime.getMinutes() + 30);
+                    endTime.setMinutes(endTime.getMinutes() + 30); // Default block is 30 min if no end time
                 }
 
                 const { top, height } = getPositionAndHeight(startTime, endTime);
-                return <div key={slot.id} className="absolute w-full bg-red-200 opacity-70 z-0" style={{ top: `${top}px`, height: `${height}px` }} />;
+                return (
+                    <div 
+                        key={slot.id} 
+                        className="absolute w-full blocked-slot-visual z-0" 
+                        style={{ top: `${top}px`, height: `${height}px` }} 
+                    >
+                        {height > 30 && <span>BLOQUEADO</span>}
+                    </div>
+                );
             })}
             {dayAppointments.map(a => {
                 const { top, height } = getPositionAndHeight(a.datetime, a.endTime);
@@ -382,13 +511,16 @@ const TimelineView: React.FC<ViewProps> = ({ date, appointments, blockedSlots, o
                 return (
                     <div
                         key={a.id}
+                        draggable="true"
+                        onDragStart={(e) => handleDragStart(e, a)}
+                        onDragEnd={handleDragEnd}
                         onClick={() => onEditAppointment(a)}
-                        className={`absolute w-[95%] left-[2.5%] p-2 rounded-md text-white text-xs z-10 shadow-lg cursor-pointer opacity-90 hover:opacity-100 transition-opacity flex flex-col justify-start ${isNew ? 'animate-new-item' : ''}`}
+                        className={`absolute w-[95%] left-[2.5%] p-2 rounded-md text-white text-xs z-10 shadow-lg cursor-grab opacity-90 hover:opacity-100 transition-opacity flex flex-col justify-start ${isNew ? 'animate-new-item' : ''}`}
                         style={{ top: `${top}px`, height: `${height}px`, backgroundColor: professionalColor, color: getContrastColor(professionalColor) }}
                         title={`${a.clientName} - ${a.services.map(s => s.name).join(', ')}`}
                     >
                         <div className="flex justify-between items-start">
-                             <p className="font-bold flex-grow">{a.clientName}</p>
+                             <p className="font-bold flex-grow">{a.isPackageAppointment && '📦 '}{a.clientName}</p>
                              {professional && <span className="text-xs font-bold opacity-75 flex-shrink-0" title={professional.name}>{getInitials(professional.name)}</span>}
                         </div>
                         <p className="truncate">{a.services.map(s => s.name).join(', ')}</p>
@@ -399,15 +531,15 @@ const TimelineView: React.FC<ViewProps> = ({ date, appointments, blockedSlots, o
     );
 };
 
-const DayView: React.FC<ViewProps> = ({ date, appointments, blockedSlots, onEditAppointment, newlyAddedAppointmentId, professionals }) => {
+const DayView: React.FC<ViewProps> = (props) => {
     return (
         <div className="pl-14 py-4">
-             <TimelineView date={date} appointments={appointments} blockedSlots={blockedSlots} onEditAppointment={onEditAppointment} newlyAddedAppointmentId={newlyAddedAppointmentId} professionals={professionals} />
+             <TimelineView {...props} isDynamicHeight={true} />
         </div>
     );
 };
 
-const WeekView: React.FC<ViewProps> = ({ date, appointments, blockedSlots, onEditAppointment, newlyAddedAppointmentId, professionals }) => {
+const WeekView: React.FC<ViewProps> = ({ date, appointments, blockedSlots, onEditAppointment, onUpdateAppointment, newlyAddedAppointmentId, professionals }) => {
     const startOfWeek = new Date(date);
     startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
     const weekDays = Array.from({ length: 7 }).map((_, i) => new Date(startOfWeek.getFullYear(), startOfWeek.getMonth(), startOfWeek.getDate() + i));
@@ -430,7 +562,15 @@ const WeekView: React.FC<ViewProps> = ({ date, appointments, blockedSlots, onEdi
             <div className="grid grid-cols-7 flex-grow">
                 {weekDays.map(day => (
                     <div key={day.toISOString()} className="border-l border-[var(--border)] relative pl-14">
-                        <TimelineView date={day} appointments={appointments} blockedSlots={blockedSlots} onEditAppointment={onEditAppointment} newlyAddedAppointmentId={newlyAddedAppointmentId} professionals={professionals} />
+                        <TimelineView 
+                           date={day} 
+                           appointments={appointments} 
+                           blockedSlots={blockedSlots} 
+                           onEditAppointment={onEditAppointment} 
+                           onUpdateAppointment={onUpdateAppointment}
+                           newlyAddedAppointmentId={newlyAddedAppointmentId} 
+                           professionals={professionals}
+                        />
                     </div>
                 ))}
             </div>

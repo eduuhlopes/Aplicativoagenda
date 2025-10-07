@@ -13,6 +13,8 @@ export interface Appointment {
   category?: string;
   observations?: string;
   reminderSent?: boolean;
+  isPackageAppointment?: boolean;
+  packageId?: string;
 }
 
 export interface ModalButton {

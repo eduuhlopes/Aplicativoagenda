@@ -379,6 +379,21 @@
         font-size: 0.75rem;
         color: var(--secondary);
       }
+      
+      .blocked-slot-visual {
+        background-color: rgba(254, 202, 202, 0.75); /* bg-red-200 with opacity */
+        background-image: linear-gradient(45deg, rgba(239, 68, 68, 0.4) 25%, transparent 25%, transparent 50%, rgba(239, 68, 68, 0.4) 50%, rgba(239, 68, 68, 0.4) 75%, transparent 75%, transparent);
+        background-size: 20px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        font-weight: bold;
+        color: #991b1b; /* text-red-800 */
+        overflow: hidden;
+        border-left: 3px solid #ef4444; /* border-red-500 */
+      }
+
 
       /* Toast Notifications */
       .toast-container {
