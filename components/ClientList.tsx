@@ -279,7 +279,7 @@ const ClientList: React.FC<ClientListProps> = ({ clients, appointments, onAddCli
                 </div>
             </div>
 
-            <div className="flex-grow overflow-y-auto pr-2 -mr-2 space-y-4">
+            <div className="flex-grow overflow-y-auto pr-2 -mr-2 space-y-4 custom-v-scrollbar">
                 {clients.length === 0 ? (
                     <div className="flex items-center justify-center h-full py-10">
                         <p className="text-[var(--secondary)] text-center italic">Nenhuma cliente registrada. Clique em "+ Adicionar" para começar.</p>
