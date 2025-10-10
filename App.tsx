@@ -1074,7 +1074,7 @@ const App: React.FC = () => {
             </div>
 
             {/* Navigation */}
-            <nav className="flex justify-center bg-[var(--surface-opaque)]/80 backdrop-blur-sm shadow-md sticky top-0 z-30 border-b border-[var(--border)]">
+            <nav className="flex overflow-x-auto whitespace-nowrap justify-start sm:justify-center bg-[var(--surface-opaque)]/80 backdrop-blur-sm shadow-md sticky top-0 z-30 border-b border-[var(--border)] custom-h-scrollbar">
                 {([
                     { label: 'Agenda', view: 'agenda' },
                     { label: 'Clientes', view: 'clients' }, 
@@ -1086,7 +1086,7 @@ const App: React.FC = () => {
                     <button 
                         key={item.view}
                         onClick={() => setActiveView(item.view)}
-                        className={`px-3 sm:px-6 py-4 text-sm sm:text-base font-bold transition-all border-b-4 ${
+                        className={`flex-shrink-0 px-4 sm:px-6 py-4 text-sm sm:text-base font-bold transition-all border-b-4 ${
                             activeView === item.view 
                                 ? 'text-[var(--primary)] border-[var(--primary)]' 
                                 : 'text-[var(--text-body)] border-transparent hover:bg-[var(--highlight)]'
