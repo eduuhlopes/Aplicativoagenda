@@ -6,7 +6,12 @@
 export const getAverageColor = (imageUrl: string): Promise<{ r: number; g: number; b: number }> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.crossOrigin = 'Anonymous';
+    
+    // Only set crossOrigin for non-data URLs to avoid CORS errors with base64 images
+    if (!imageUrl.startsWith('data:')) {
+      img.crossOrigin = 'Anonymous';
+    }
+
     img.onload = () => {
       const canvas = document.createElement('canvas');
       canvas.width = 1;

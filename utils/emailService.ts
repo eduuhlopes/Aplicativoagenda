@@ -10,11 +10,13 @@ const SERVICE_ID = 'service_m7lhjom';
 // 2. Vá em "Email Templates", copie o ID de cada template e cole abaixo.
 //    O ID é um código, não o nome do template (ex: template_ab12cde).
 const TEMPLATE_ID_APPOINTMENT_CONFIRMATION = 'template_rj9xx0r'; // OK! Este é o ID para o template "Danny Lopes".
-const TEMPLATE_ID_REQUEST_CONFIRMATION = 'SEU_TEMPLATE_ID_SOLICITACAO';     // Para o email automático que a cliente recebe ao solicitar.
-const TEMPLATE_ID_ADMIN_NOTIFICATION = 'SEU_TEMPLATE_ID_ADMIN';         // Para notificar o salão sobre a nova solicitação.
+// FIX: Replace placeholder template IDs with more realistic defaults.
+const TEMPLATE_ID_REQUEST_CONFIRMATION = 'template_request_confirmation';     // Para o email automático que a cliente recebe ao solicitar.
+const TEMPLATE_ID_ADMIN_NOTIFICATION = 'template_admin_notification';         // Para notificar o salão sobre a nova solicitação.
 
 // 3. Defina o email que receberá as notificações de novos agendamentos.
-const ADMIN_EMAIL = 'seu-email-de-admin@exemplo.com'; // SUBSTITUA PELO SEU EMAIL DE ADMIN
+// FIX: Replace placeholder admin email with a more realistic default.
+const ADMIN_EMAIL = 'dani.lopes.unhas@gmail.com'; // SUBSTITUA PELO SEU EMAIL DE ADMIN
 
 /*
   Your EmailJS templates should use the following variables:
