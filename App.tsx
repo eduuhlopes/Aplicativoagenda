@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { GoogleGenAI } from '@google/genai';
 
@@ -257,20 +259,42 @@ const App: React.FC = () => {
             });
     
             const extractedText = response.text.replace(',', '.').replace(/[^\d.]/g, '');
-            const extractedValue = parseFloat(extractedText);
+            const extractedValue = parseFloat(extractedText) || 0;
     
             const updatedProof = { ...proof, extractedValue, validatedAt: new Date() };
-    
-            // Use a tolerance for comparison (e.g., 1 cent)
-            if (Math.abs(extractedValue - proof.totalDue) < 0.01 || extractedValue > proof.totalDue) {
-                updatedProof.status = 'validated';
-                setAppointments(prev =>
-                    prev.map(a => proof.appointmentIds.includes(a.id) ? { ...a, paymentStatus: 'paid' } : a)
-                );
-                showToast(`Comprovante de ${client?.name || 'cliente'} validado e quitado pela IA!`, 'success');
-            } else {
+            const enteredValue = proof.clientEnteredValue;
+
+            if (enteredValue && enteredValue >= proof.totalDue) {
+                // Client entered a sufficient amount. Let's see if AI agrees.
+                const tolerance = 0.02; // 2% tolerance for OCR errors
+                const difference = Math.abs(extractedValue - enteredValue);
+
+                if (extractedValue > 0 && difference / enteredValue <= tolerance) {
+                    updatedProof.status = 'validated';
+                    setAppointments(prev =>
+                        prev.map(a => proof.appointmentIds.includes(a.id) ? { ...a, paymentStatus: 'paid' } : a)
+                    );
+                    showToast(`Comprovante de ${client?.name || ''} validado e quitado! (IA Confirmou)`, 'success');
+                } else {
+                    updatedProof.status = 'rejected';
+                    showToast(`IA detectou valor diferente do informado por ${client?.name || ''}. Verifique.`, 'error');
+                }
+            } else if (enteredValue) {
+                // Client entered an insufficient amount.
                 updatedProof.status = 'rejected';
-                showToast(`IA rejeitou o comprovante de ${client?.name || 'cliente'}. Verifique o valor.`, 'error');
+                showToast(`Valor informado por ${client?.name || ''} é menor que o devido.`, 'error');
+            } else {
+                // Fallback for old proofs without client-entered value or if value is 0
+                if (extractedValue >= proof.totalDue) {
+                    updatedProof.status = 'validated';
+                    setAppointments(prev =>
+                        prev.map(a => proof.appointmentIds.includes(a.id) ? { ...a, paymentStatus: 'paid' } : a)
+                    );
+                    showToast(`Comprovante de ${client?.name || ''} validado e quitado pela IA!`, 'success');
+                } else {
+                    updatedProof.status = 'rejected';
+                    showToast(`IA rejeitou o comprovante de ${client?.name || ''}. Verifique o valor.`, 'error');
+                }
             }
             
             setPaymentProofs(prev => prev.map(p => p.id === proof.id ? updatedProof : p));
@@ -278,7 +302,7 @@ const App: React.FC = () => {
         } catch (error) {
             console.error("AI Validation Error:", error);
             showToast(`Erro ao validar comprovante de ${client?.name} com IA.`, 'error');
-            // Mark as rejected if AI fails, for manual review
+            // Mark for manual review if AI fails
             setPaymentProofs(prev => prev.map(p => p.id === proof.id ? { ...p, status: 'rejected', extractedValue: -1 } : p));
         }
     }, [clients, setAppointments, setPaymentProofs, showToast]);
@@ -743,12 +767,10 @@ const App: React.FC = () => {
         if ('id' in clientData) { // Editing existing client
             setClients(prev => prev.map(c => c.id === clientData.id ? clientData : c));
             showToast('Cliente atualizada com sucesso!', 'success');
-            handleCloseClientForm();
         } else { // Adding new client
             const newClient: Client = { ...clientData, id: Date.now() };
             setClients(prev => [...prev, newClient]);
             showToast('Cliente adicionada com sucesso!', 'success');
-            handleCloseClientForm();
     
             // After a short delay for animation, show the follow-up modal
             setTimeout(() => {
@@ -776,7 +798,7 @@ const App: React.FC = () => {
                 );
             }, 400); // Corresponds to form slide-out animation duration
         }
-    }, [handleCloseClientForm, showToast, setClients, showModal, closeModal, handleOpenForm]);
+    }, [showToast, setClients, showModal, closeModal, handleOpenForm]);
 
     const handleUpdateService = useCallback((updatedService: Service) => {
         setServices(prevServices =>
@@ -982,6 +1004,7 @@ const App: React.FC = () => {
                             showToast={showToast}
                             showModal={showModal}
                             closeModal={closeModal}
+                            setAppointments={setAppointments}
                         />;
             case 'services':
                 return <ServicesView services={services} onUpdateService={handleUpdateService} monthlyPackage={monthlyPackage} onUpdatePackage={setMonthlyPackage} />;

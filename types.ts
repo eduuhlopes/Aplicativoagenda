@@ -140,4 +140,5 @@ export interface PaymentProof {
     status: 'pending_validation' | 'validated' | 'rejected' | 'manual_approval';
     validatedAt?: Date;
     extractedValue?: number; // The value extracted by the AI
+    clientEnteredValue?: number; // The value entered by the client on the public page
 }

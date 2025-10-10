@@ -1,3 +1,5 @@
+
+
 import React, { useMemo, useState } from 'react';
 import { Appointment, Client, PaymentLink, PaymentProof, ModalButton } from '../types';
 import CollapsibleSection from './CollapsibleSection';
@@ -14,6 +16,8 @@ interface PaymentsViewProps {
     // FIX: Added optional `buttons` parameter to `showModal` to match the function signature in App.tsx.
     showModal: (title: string, message: string, onConfirm?: () => void, buttons?: ModalButton[]) => void;
     closeModal: () => void;
+    // FIX: Add setAppointments prop to update appointments state on manual proof approval.
+    setAppointments: React.Dispatch<React.SetStateAction<Appointment[]>>;
 }
 
 const PaymentsIcon = () => (
@@ -42,7 +46,7 @@ const ProofsIcon: React.FC<{className?: string}> = ({className}) => (
 
 
 
-const PaymentsView: React.FC<PaymentsViewProps> = ({ appointments, clients, onMarkAsPaid, paymentLinks, onUpdatePaymentLinks, paymentProofs, onUpdatePaymentProofs, showToast, showModal, closeModal }) => {
+const PaymentsView: React.FC<PaymentsViewProps> = ({ appointments, clients, onMarkAsPaid, paymentLinks, onUpdatePaymentLinks, paymentProofs, onUpdatePaymentProofs, showToast, showModal, closeModal, setAppointments }) => {
 
     const debtsByClient = useMemo(() => {
         const pendingAppointments = appointments.filter(a => a.status === 'completed' && a.paymentStatus === 'pending');
@@ -70,8 +74,8 @@ const PaymentsView: React.FC<PaymentsViewProps> = ({ appointments, clients, onMa
     
     const pendingProofs = useMemo(() => {
         return paymentProofs
-            .filter(p => p.status === 'rejected' || p.status === 'pending_validation')
-            .sort((a, b) => (a.validatedAt?.getTime() || 0) - (b.validatedAt?.getTime() || 0));
+            .filter(p => p.status === 'rejected' || p.status === 'manual_approval' || p.status === 'pending_validation')
+            .sort((a, b) => (a.validatedAt?.getTime() || Date.now()) - (b.validatedAt?.getTime() || Date.now()));
     }, [paymentProofs]);
 
 
@@ -114,8 +118,23 @@ const PaymentsView: React.FC<PaymentsViewProps> = ({ appointments, clients, onMa
     };
     
     const handleManualProofApproval = (proof: PaymentProof) => {
-        onUpdatePaymentProofs(prev => prev.map(p => p.id === proof.id ? {...p, status: 'manual_approval'} : p));
-        onMarkAsPaid(proof.appointmentIds[0]); // Mark the first one as a trigger, can be improved
+        // Mark proof as manually approved
+        onUpdatePaymentProofs(prev => prev.map(p => p.id === proof.id ? {...p, status: 'validated', validatedAt: new Date()} : p));
+        // Mark all associated appointments as paid
+        onUpdatePaymentProofs(prev => {
+            const updatedProofs = prev.map(p => {
+                if (p.id === proof.id) {
+                    return { ...p, status: 'validated' as const, validatedAt: new Date() };
+                }
+                return p;
+            });
+            return updatedProofs;
+        });
+
+        // FIX: 'setAppointments' was not defined. It is now passed as a prop.
+        setAppointments(prev =>
+            prev.map(a => proof.appointmentIds.includes(a.id) ? { ...a, paymentStatus: 'paid' } : a)
+        );
         showToast('Comprovante aprovado manualmente!', 'success');
     };
 
@@ -134,7 +153,7 @@ const PaymentsView: React.FC<PaymentsViewProps> = ({ appointments, clients, onMa
             {pendingProofs.length > 0 && (
                  <div className="mb-8">
                     <CollapsibleSection
-                        title="Comprovantes Pendentes de Aprovação"
+                        title={`Comprovantes Pendentes (${pendingProofs.length})`}
                         icon={<ProofsIcon className="h-6 w-6" />}
                         defaultOpen={true}
                     >
@@ -143,16 +162,18 @@ const PaymentsView: React.FC<PaymentsViewProps> = ({ appointments, clients, onMa
                                 const client = clients.find(c => c.id === proof.clientId);
                                 const statusInfo = {
                                     rejected: { text: "Rejeitado pela IA", color: "border-red-400" },
-                                    pending_validation: { text: "Aguardando Validação da IA...", color: "border-yellow-400" }
+                                    pending_validation: { text: "Aguardando Validação da IA...", color: "border-yellow-400" },
+                                    manual_approval: { text: "Aprovação Manual Necessária", color: "border-blue-400" }
                                 }[proof.status];
                                  return (
-                                    <div key={proof.id} className={`flex flex-col sm:flex-row justify-between items-start gap-3 p-3 bg-white rounded-md border-l-4 ${statusInfo.color}`}>
+                                    <div key={proof.id} className={`flex flex-col sm:flex-row justify-between items-start gap-3 p-3 bg-white rounded-md border-l-4 ${statusInfo?.color || 'border-gray-400'}`}>
                                         <img src={proof.imageDataUrl} alt="Comprovante" className="w-16 h-16 object-cover rounded-md cursor-pointer" onClick={() => window.open(proof.imageDataUrl)}/>
                                         <div className="flex-grow">
                                             <p className="font-semibold text-md text-[var(--text-dark)]">{client?.name || 'Cliente desconhecida'}</p>
                                             <p className="font-bold text-sm text-[var(--secondary)]">Devido: {proof.totalDue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
-                                            {proof.status === 'rejected' && <p className="text-xs font-bold text-red-600">IA detectou: {proof.extractedValue?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>}
-                                            <p className="text-xs text-gray-500 italic">{statusInfo.text}</p>
+                                            {proof.clientEnteredValue && <p className="font-bold text-sm text-blue-600">Informado: {proof.clientEnteredValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>}
+                                            {proof.status === 'rejected' && <p className="text-xs font-bold text-red-600">IA detectou: {(proof.extractedValue ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>}
+                                            <p className="text-xs text-gray-500 italic">{statusInfo?.text}</p>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <button onClick={() => handleManualProofApproval(proof)} className="px-3 py-1 bg-[var(--success)] text-white text-sm font-bold rounded-lg shadow-sm">Aprovar Manualmente</button>
@@ -175,7 +196,7 @@ const PaymentsView: React.FC<PaymentsViewProps> = ({ appointments, clients, onMa
                             <div key={client.id} className="bg-white p-4 rounded-lg shadow-sm border border-[var(--border)]">
                                 <CollapsibleSection
                                     title={client.name}
-                                    defaultOpen={true}
+                                    defaultOpen={debts.length < 4}
                                     icon={
                                         <div className="text-right">
                                             <p className="font-semibold text-lg text-[var(--danger)]">{total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
@@ -184,21 +205,20 @@ const PaymentsView: React.FC<PaymentsViewProps> = ({ appointments, clients, onMa
                                 >
                                     <div className="space-y-3 pt-3">
                                         {debts.map(debt => (
-                                            <div key={debt.id} className="flex flex-col sm:flex-row justify-between items-start gap-2 p-3 bg-[var(--highlight)] rounded-md border-l-4 border-[var(--warning)]">
-                                                <div>
-                                                    <p className="font-semibold text-[var(--text-dark)]">{debt.datetime.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
-                                                    <p className="text-sm text-[var(--secondary)]">{debt.services.map(s => s.name).join(', ')}</p>
-                                                </div>
-                                                <div className="flex items-center gap-3">
-                                                     <p className="font-bold text-md text-[var(--text-dark)]">
+                                            <div key={debt.id} className="flex justify-between items-center gap-2 p-3 bg-[var(--highlight)] rounded-md border-l-4 border-[var(--warning)]">
+                                                <p className="flex-grow font-semibold text-[var(--text-dark)] truncate" title={debt.services.map(s => s.name).join(' + ')}>
+                                                    {debt.services.map(s => s.name).join(' + ')}
+                                                </p>
+                                                <div className="flex items-center gap-3 flex-shrink-0">
+                                                    <p className="font-bold text-md text-[var(--text-dark)]">
                                                         {debt.services.reduce((s,i)=>s+i.value,0).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}
-                                                     </p>
-                                                     <button
+                                                    </p>
+                                                    <button
                                                         onClick={() => onMarkAsPaid(debt.id)}
                                                         className="px-3 py-1 bg-[var(--success)] text-white text-sm font-bold rounded-lg shadow-sm hover:opacity-90 active:scale-95"
-                                                     >
+                                                    >
                                                         Pago
-                                                     </button>
+                                                    </button>
                                                 </div>
                                             </div>
                                         ))}

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Client } from '../types';
 
@@ -37,6 +38,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ onSave, clientToEdit, onCancel,
     const [observations, setObservations] = useState('');
     const [error, setError] = useState('');
     const [isContactPickerSupported, setIsContactPickerSupported] = useState(false);
+    const [isSuccess, setIsSuccess] = useState(false);
 
     useEffect(() => {
         // Check for Contact Picker API support, but disable it in iframes to prevent errors.
@@ -60,6 +62,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ onSave, clientToEdit, onCancel,
             setObservations('');
         }
         setError('');
+        setIsSuccess(false);
     }, [clientToEdit]);
 
     const formatPhone = (value: string) => {
@@ -113,6 +116,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ onSave, clientToEdit, onCancel,
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        if (isSuccess) return;
         setError('');
 
         if (!name.trim() || !phone.trim()) {
@@ -133,67 +137,78 @@ const ClientForm: React.FC<ClientFormProps> = ({ onSave, clientToEdit, onCancel,
             observations: observations.trim()
         };
         
-        if (clientToEdit) {
-            onSave({ ...clientToEdit, ...clientData });
-        } else {
-            onSave(clientData);
-        }
+        onSave(clientToEdit ? { ...clientToEdit, ...clientData } : clientData);
+        
+        setIsSuccess(true);
+        setTimeout(() => {
+            onCancel();
+        }, 1500);
     };
     
     const inputClasses = "w-full h-11 px-3 py-2 bg-[var(--highlight)] border border-[var(--border)] rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-[var(--accent)] transition";
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="flex justify-between items-start">
-                <h2 className="text-3xl font-bold text-[var(--text-dark)] mb-4">{clientToEdit ? 'Editar Cliente' : 'Nova Cliente'}</h2>
-                <button type="button" onClick={onCancel} className="p-2 -mt-2 -mr-2 text-gray-400 hover:text-gray-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-            </div>
+        <form onSubmit={handleSubmit} className="space-y-4 relative">
+            {isSuccess && (
+                <div className="success-overlay rounded-2xl">
+                    <svg className="success-checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
+                        <circle className="success-checkmark__circle" cx="26" cy="26" r="25" fill="none"/>
+                        <path className="success-checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
+                    </svg>
+                </div>
+            )}
+            <div style={{ visibility: isSuccess ? 'hidden' : 'visible' }}>
+                <div className="flex justify-between items-start">
+                    <h2 className="text-3xl font-bold text-[var(--text-dark)] mb-4">{clientToEdit ? 'Editar Cliente' : 'Nova Cliente'}</h2>
+                    <button type="button" onClick={onCancel} className="p-2 -mt-2 -mr-2 text-gray-400 hover:text-gray-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
 
-            {error && <p className="text-center text-sm font-semibold text-[var(--danger)] bg-red-100 p-2 rounded-md">{error}</p>}
-            
-            <div className="grid grid-cols-1 gap-4">
-                <div>
-                    <div className="flex justify-between items-center mb-1">
-                        <label htmlFor="client-name-form" className="block text-md font-medium text-[var(--text-dark)]">
-                            Nome da Cliente:
-                        </label>
-                        {isContactPickerSupported && !clientToEdit && (
-                            <button type="button" onClick={handleSelectContact} className="flex items-center gap-1.5 text-sm text-[var(--primary)] font-semibold hover:underline" title="Importar da sua agenda de contatos">
-                                <AddressBookIcon />
-                                Importar da Agenda
-                            </button>
-                        )}
+                {error && <p className="text-center text-sm font-semibold text-[var(--danger)] bg-red-100 p-2 rounded-md">{error}</p>}
+                
+                <div className="grid grid-cols-1 gap-4">
+                    <div>
+                        <div className="flex justify-between items-center mb-1">
+                            <label htmlFor="client-name-form" className="block text-md font-medium text-[var(--text-dark)]">
+                                Nome da Cliente:
+                            </label>
+                            {isContactPickerSupported && !clientToEdit && (
+                                <button type="button" onClick={handleSelectContact} className="flex items-center gap-1.5 text-sm text-[var(--primary)] font-semibold hover:underline" title="Importar da sua agenda de contatos">
+                                    <AddressBookIcon />
+                                    Importar da Agenda
+                                </button>
+                            )}
+                        </div>
+                        <input type="text" id="client-name-form" value={name} onChange={(e) => setName(e.target.value)} placeholder="Digite o nome da cliente" className={inputClasses} required />
                     </div>
-                    <input type="text" id="client-name-form" value={name} onChange={(e) => setName(e.target.value)} placeholder="Digite o nome da cliente" className={inputClasses} required />
+
+                    <div>
+                        <label htmlFor="client-phone-form" className="block text-md font-medium text-[var(--text-dark)] mb-1">
+                            Telefone (WhatsApp):
+                        </label>
+                        <input type="tel" id="client-phone-form" value={phone} onChange={handlePhoneChange} placeholder="(XX) XXXXX-XXXX" maxLength={15} className={inputClasses} required />
+                    </div>
+                    <div>
+                        <label htmlFor="client-email-form" className="block text-md font-medium text-[var(--text-dark)] mb-1">
+                            E-mail (opcional):
+                        </label>
+                        <input type="email" id="client-email-form" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@exemplo.com" className={inputClasses} />
+                    </div>
+                </div>
+                
+                <div>
+                    <label htmlFor="client-observations" className="block text-md font-medium text-[var(--text-dark)] mb-1">
+                        Observações:
+                    </label>
+                    <textarea id="client-observations" value={observations} onChange={(e) => setObservations(e.target.value)} placeholder="Alergias, preferências, histórico, etc." rows={3} className="w-full px-3 py-2 bg-[var(--highlight)] border border-[var(--border)] rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-[var(--accent)] transition" />
                 </div>
 
-                <div>
-                    <label htmlFor="client-phone-form" className="block text-md font-medium text-[var(--text-dark)] mb-1">
-                        Telefone (WhatsApp):
-                    </label>
-                    <input type="tel" id="client-phone-form" value={phone} onChange={handlePhoneChange} placeholder="(XX) XXXXX-XXXX" maxLength={15} className={inputClasses} required />
+                <div className="mt-6 flex flex-col items-center">
+                    <button type="submit" className="w-full py-3 px-4 bg-[var(--primary)] text-white font-bold text-lg rounded-lg shadow-md hover:bg-[var(--primary-hover)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--primary)] transition-transform transform hover:scale-105 active:scale-95 disabled:opacity-50" disabled={!name || !phone || isSuccess}>
+                        {clientToEdit ? 'Salvar Alterações' : 'Adicionar Cliente'}
+                    </button>
                 </div>
-                <div>
-                    <label htmlFor="client-email-form" className="block text-md font-medium text-[var(--text-dark)] mb-1">
-                        E-mail (opcional):
-                    </label>
-                    <input type="email" id="client-email-form" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@exemplo.com" className={inputClasses} />
-                </div>
-            </div>
-             
-             <div>
-                <label htmlFor="client-observations" className="block text-md font-medium text-[var(--text-dark)] mb-1">
-                    Observações:
-                </label>
-                <textarea id="client-observations" value={observations} onChange={(e) => setObservations(e.target.value)} placeholder="Alergias, preferências, histórico, etc." rows={3} className="w-full px-3 py-2 bg-[var(--highlight)] border border-[var(--border)] rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-[var(--accent)] transition" />
-            </div>
-
-            <div className="mt-6 flex flex-col items-center">
-                <button type="submit" className="w-full py-3 px-4 bg-[var(--primary)] text-white font-bold text-lg rounded-lg shadow-md hover:bg-[var(--primary-hover)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--primary)] transition-transform transform hover:scale-105 active:scale-95 disabled:opacity-50" disabled={!name || !phone}>
-                    {clientToEdit ? 'Salvar Alterações' : 'Adicionar Cliente'}
-                </button>
             </div>
         </form>
     );

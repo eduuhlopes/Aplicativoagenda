@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Appointment, Client, Service, PaymentLink, PaymentProof } from '../types';
 
@@ -29,6 +30,7 @@ const PublicPaymentPage: React.FC = () => {
     const [error, setError] = useState<string>('');
     const [isLoading, setIsLoading] = useState(true);
     const [file, setFile] = useState<File | null>(null);
+    const [enteredAmount, setEnteredAmount] = useState<string>('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
 
@@ -93,8 +95,8 @@ const PublicPaymentPage: React.FC = () => {
     };
     
     const handleSubmitProof = () => {
-        if (!file || !paymentLink || !client) {
-            alert("Por favor, selecione um arquivo de comprovante.");
+        if (!file || !paymentLink || !client || !enteredAmount) {
+            alert("Por favor, informe o valor pago e selecione um arquivo de comprovante.");
             return;
         }
         setIsSubmitting(true);
@@ -103,6 +105,13 @@ const PublicPaymentPage: React.FC = () => {
         reader.readAsDataURL(file);
         reader.onload = () => {
             const imageDataUrl = reader.result as string;
+            const clientEnteredValue = parseFloat(enteredAmount.replace(',', '.'));
+
+            if (isNaN(clientEnteredValue) || clientEnteredValue <= 0) {
+                 alert("Por favor, insira um valor de pagamento válido.");
+                 setIsSubmitting(false);
+                 return;
+            }
             
             const newProof: PaymentProof = {
                 id: paymentLink.id,
@@ -110,7 +119,8 @@ const PublicPaymentPage: React.FC = () => {
                 appointmentIds: paymentLink.appointmentIds,
                 totalDue: paymentLink.totalDue,
                 imageDataUrl,
-                status: 'pending_validation'
+                status: 'pending_validation',
+                clientEnteredValue,
             };
 
             // Save the proof to localStorage for the main app to process
@@ -157,51 +167,70 @@ const PublicPaymentPage: React.FC = () => {
         }
         if (paymentLink && client) {
             return (
-                 <div className="animate-view-in">
-                    <h2 className="text-2xl font-bold text-center text-[var(--text-dark)] mb-2">Olá, {client.name}!</h2>
-                    <p className="text-center text-[var(--text-body)] mb-4">Aqui estão os detalhes da sua pendência:</p>
-                    
-                    <div className="bg-white p-4 rounded-lg border border-[var(--border)] space-y-2 mb-6">
-                        {appointments.map(appt => (
-                             <div key={appt.id} className="flex justify-between items-center text-sm border-b border-dashed pb-2 last:border-none">
-                                <div>
-                                    <p className="font-semibold">{appt.datetime.toLocaleDateString('pt-BR')}</p>
-                                    <p className="text-xs text-gray-600">{appt.services.map(s => s.name).join(', ')}</p>
+                 <div className="animate-view-in space-y-6">
+                    <div>
+                        <h2 className="text-2xl font-bold text-center text-[var(--text-dark)] mb-2">Olá, {client.name}!</h2>
+                        <p className="text-center text-[var(--text-body)] mb-4">Aqui estão os detalhes da sua pendência:</p>
+                        
+                        <div className="bg-white p-4 rounded-lg border border-[var(--border)] space-y-2">
+                            {appointments.map(appt => (
+                                <div key={appt.id} className="flex justify-between items-center text-sm border-b border-dashed pb-2 last:border-none">
+                                    <div>
+                                        <p className="font-semibold">{appt.datetime.toLocaleDateString('pt-BR')}</p>
+                                        <p className="text-xs text-gray-600">{appt.services.map(s => s.name).join(', ')}</p>
+                                    </div>
+                                    <p className="font-bold">{appt.services.reduce((sum,s)=>sum+s.value,0).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</p>
                                 </div>
-                                <p className="font-bold">{appt.services.reduce((sum,s)=>sum+s.value,0).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</p>
+                            ))}
+                            <div className="flex justify-between items-center pt-2 font-bold text-xl">
+                                <span className="text-[var(--text-dark)]">Total a Pagar:</span>
+                                <span className="text-[var(--danger)]">{paymentLink.totalDue.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</span>
                             </div>
-                        ))}
-                        <div className="flex justify-between items-center pt-2 font-bold text-xl">
-                            <span className="text-[var(--text-dark)]">Total a Pagar:</span>
-                            <span className="text-[var(--danger)]">{paymentLink.totalDue.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</span>
                         </div>
                     </div>
 
                     <div>
+                        <label htmlFor="amount-input" className="block text-md font-medium text-[var(--text-dark)] mb-2 text-center">
+                            1. Informe o valor pago (conforme comprovante):
+                        </label>
+                        <input
+                            type="number"
+                            id="amount-input"
+                            value={enteredAmount}
+                            onChange={e => setEnteredAmount(e.target.value)}
+                            placeholder="Ex: 150,00"
+                            step="0.01"
+                            min="0"
+                            required
+                            className="w-full h-12 px-4 text-lg text-center bg-[var(--highlight)] border-2 border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                        />
+                    </div>
+                    
+                    <div>
                         <label htmlFor="proof-upload" className="block text-md font-medium text-[var(--text-dark)] mb-2 text-center">
-                            Envie o comprovante de pagamento:
+                            2. Envie o comprovante de pagamento:
                         </label>
                         <input
                             type="file"
                             id="proof-upload"
-                            accept="image/png, image/jpeg, image/gif, application/pdf"
+                            accept="image/png, image/jpeg, image/gif"
                             onChange={handleFileChange}
                             className="block w-full text-sm text-slate-500
                                 file:mr-4 file:py-2 file:px-4
                                 file:rounded-full file:border-0
                                 file:text-sm file:font-semibold
                                 file:bg-[var(--highlight)] file:text-[var(--primary)]
-                                hover:file:bg-[var(--accent)]"
+                                hover:file:bg-[var(--accent)] cursor-pointer"
                         />
                          {file && <p className="text-center text-sm mt-2 text-gray-500">Arquivo selecionado: {file.name}</p>}
                     </div>
 
                     <button 
                         onClick={handleSubmitProof} 
-                        disabled={!file || isSubmitting}
-                        className="mt-6 w-full py-3 btn-primary-gradient text-white font-bold rounded-lg shadow-md hover:scale-105 transition-transform active:scale-95 disabled:opacity-50 disabled:grayscale"
+                        disabled={!file || !enteredAmount || isSubmitting}
+                        className="w-full py-3 btn-primary-gradient text-white font-bold rounded-lg shadow-md hover:scale-105 transition-transform active:scale-95 disabled:opacity-50 disabled:grayscale"
                     >
-                        {isSubmitting ? 'Enviando...' : 'Confirmar Envio do Comprovante'}
+                        {isSubmitting ? 'Enviando...' : 'Confirmar Envio'}
                     </button>
                  </div>
             );
