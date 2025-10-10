@@ -43,7 +43,84 @@ app.post('/api/agendamentos', (req, res) => {
   res.status(201).json(newAppointment); // Retorna o agendamento criado com status 201 (Created)
 });
 
-// TODO: Adicionar rotas para /api/clientes, /api/profissionais, etc.
+
+// --- API de Clientes ---
+
+// [GET] /api/clientes - Retorna todos os clientes
+app.get('/api/clientes', (req, res) => {
+  res.status(200).json(db.clients);
+});
+
+// [POST] /api/clientes - Cria um novo cliente
+app.post('/api/clientes', (req, res) => {
+  const { name, phone, email, observations } = req.body;
+
+  // Validação
+  if (!name || !phone) {
+    return res.status(400).json({ message: "Nome e telefone são obrigatórios." });
+  }
+
+  // Checa se cliente já existe pelo telefone
+  const sanitizedPhone = phone.replace(/\D/g, '');
+  const clientExists = db.clients.some(client => client.phone.replace(/\D/g, '') === sanitizedPhone);
+  if (clientExists) {
+    return res.status(409).json({ message: "Cliente com este telefone já existe." });
+  }
+  
+  const newClient = {
+    id: Date.now(),
+    name,
+    phone,
+    email: email || '',
+    observations: observations || ''
+  };
+
+  db.clients.push(newClient);
+  console.log('Nova cliente adicionada:', newClient.name);
+  res.status(201).json(newClient);
+});
+
+
+// --- API de Profissionais ---
+
+// [GET] /api/profissionais - Retorna todos os profissionais
+app.get('/api/profissionais', (req, res) => {
+  // O ideal é não retornar a senha
+  const professionalsWithoutPasswords = {};
+  for (const username in db.professionals) {
+    const { password, ...professionalData } = db.professionals[username];
+    professionalsWithoutPasswords[username] = { ...professionalData, username };
+  }
+  res.status(200).json(professionalsWithoutPasswords);
+});
+
+// [POST] /api/profissionais - Cria um novo profissional
+app.post('/api/profissionais', (req, res) => {
+  const { username, name, password, role } = req.body;
+
+  // Validação
+  if (!username || !name || !password || !role) {
+    return res.status(400).json({ message: "Usuário, nome, senha e função são obrigatórios." });
+  }
+  
+  const userKey = username.toLowerCase();
+  if (db.professionals[userKey]) {
+    return res.status(409).json({ message: "Nome de usuário já existe." });
+  }
+
+  const newProfessional = {
+    name,
+    password, // Em um app real, isso seria hasheado
+    role,
+    assignedServices: [], // Começa sem serviços atribuídos
+  };
+
+  db.professionals[userKey] = newProfessional;
+  console.log('Nova profissional adicionada:', newProfessional.name);
+
+  const { password: _, ...responseData } = newProfessional;
+  res.status(201).json({ ...responseData, username: userKey });
+});
 
 
 // Rota básica para confirmar que o servidor está funcionando
