@@ -1,106 +1,119 @@
-export interface Service {
-    name: string;
-    value: number;
-    duration: number; // in minutes
-    category: string;
-}
-
 export type AppointmentStatus = 'pending' | 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'delayed';
 
 export interface Appointment {
-    id: number;
-    clientName: string;
-    clientPhone: string;
-    clientEmail?: string;
-    services: Service[];
-    datetime: Date;
-    endTime: Date;
-    status: AppointmentStatus;
-    professionalUsername: string;
-    observations?: string;
-    isPackageAppointment?: boolean;
-}
-
-export interface Client {
-    id: string; // Using string to allow for UUIDs or other identifiers
-    name: string;
-    phone: string;
-    email?: string;
-    observations?: string;
-}
-
-export interface EnrichedClient extends Client {
-    totalSpent: number;
-    daysSinceLastVisit: number | null;
-    cancellationCount: number;
-}
-
-export interface BlockedSlot {
-    id: number;
-    date: Date;
-    isFullDay: boolean;
-    startTime?: string;
-    endTime?: string;
-    professionalUsername: string;
+  id: number;
+  clientName: string;
+  clientPhone: string;
+  clientEmail?: string;
+  services: { name: string; value: number; duration: number; category: string }[];
+  datetime: Date; // Start time
+  endTime: Date; // End time
+  status: AppointmentStatus;
+  professionalUsername: string; // New field to link appointment to a professional
+  category?: string;
+  observations?: string;
+  reminderSent?: boolean;
+  isPackageAppointment?: boolean;
+  packageId?: string;
 }
 
 export interface ModalButton {
     text: string;
     onClick: () => void;
-    style: 'primary' | 'secondary' | 'danger';
+    style?: 'primary' | 'secondary' | 'danger';
 }
 
-export interface CustomTheme {
-    primary: string;
-    secondary: string;
-    background: string;
-    surfaceOpaque: string;
-    textDark: string;
-    textBody: string;
+export interface ModalInfo {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  onConfirm?: () => void;
+  buttons?: ModalButton[];
 }
 
 export interface WorkDay {
-    start: string;
-    end: string;
+    start: string; // "HH:mm"
+    end: string;   // "HH:mm"
 }
 
-export interface WorkSchedule {
-    0?: WorkDay | null; // Sunday
-    1?: WorkDay | null; // Monday
-    2?: WorkDay | null; // Tuesday
-    3?: WorkDay | null; // Wednesday
-    4?: WorkDay | null; // Thursday
-    5?: WorkDay | null; // Friday
-    6?: WorkDay | null; // Saturday
+// Represents the schedule for a professional, where keys are days of the week (0=Sun, 1=Mon, etc.)
+export type WorkSchedule = {
+    [day in 0 | 1 | 2 | 3 | 4 | 5 | 6]?: WorkDay | null; // null means day off
+};
+
+// Renamed from User to Professional and expanded
+export interface Professional {
+  username: string;
+  name: string;
+  role: 'admin' | 'professional';
+  assignedServices: string[]; // Array of service names this professional provides
+  // New professional enhancement fields
+  bio?: string;
+  avatarUrl?: string;
+  color?: string; // Hex color code
+  workSchedule?: WorkSchedule;
 }
 
-// Data stored in localStorage for each user (key is username)
+// FIX: Add StoredProfessional type to correctly model user data with password from localStorage.
+// This type reflects the data structure that includes sensitive information like a password
+// and accounts for fields that might be optional before data migration handled in LoginScreen.
 export interface StoredProfessional {
-    name: string;
-    password?: string;
-    role: 'admin' | 'professional';
-    assignedServices: string[];
-    bio?: string;
-    avatarUrl?: string;
-    color?: string;
-    workSchedule?: WorkSchedule;
+  name: string;
+  password?: string;
+  role?: 'admin' | 'professional';
+  assignedServices?: string[];
+  // New professional enhancement fields
+  bio?: string;
+  avatarUrl?: string;
+  color?: string; // Hex color code
+  workSchedule?: WorkSchedule;
 }
 
-// Full professional object used in the app
-export interface Professional extends StoredProfessional {
-    username: string;
+// Represents the client data as it's stored
+export interface Client {
+  id: number;
+  name: string;
+  phone: string;
+  email?: string;
+  observations?: string;
+}
+
+// Represents the client data combined with calculated stats from appointments for display
+export interface EnrichedClient extends Client {
+  totalSpent: number;
+  daysSinceLastVisit: number | null;
+  cancellationCount: number;
+}
+
+
+export interface BlockedSlot {
+  id: number;
+  date: Date;
+  startTime?: string;
+  endTime?: string;
+  isFullDay: boolean;
+}
+
+export interface Service {
+  name: string;
+  value: number;
+  duration: number;
+  category: string;
 }
 
 export interface MonthlyPackage {
-    price: number;
+  serviceName: 'Pé+Mão';
+  price: number;
 }
 
+// Data structure for the new Financials View
 export interface FinancialData {
-    currentMonthRevenue: number;
-    projectedRevenueCurrentMonth: number;
-    averageMonthlyRevenue: number;
-    totalAnnualRevenue: number;
-    monthlyRevenue: { [key: string]: number };
-    revenueByService: { [key: string]: number };
-    revenueByProfessional: { [key: string]: number };
+  monthlyRevenue: { [key: string]: number }; // e.g., {'2024-06': 1500, '2024-07': 2000}
+  currentMonthRevenue: number;
+  projectedRevenueCurrentMonth: number;
+  averageMonthlyRevenue: number;
+  totalAnnualRevenue: number;
+  // New detailed financial metrics
+  revenueByService: { [serviceName: string]: number };
+  revenueByProfessional: { [professionalName: string]: number };
 }

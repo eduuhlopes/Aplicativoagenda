@@ -74,24 +74,3 @@ export const hexToRgb = (hex: string): { r: number; g: number; b: number } | nul
     b: parseInt(result[3], 16)
   } : null;
 };
-
-/**
- * Ajusta uma cor RGB por uma quantidade específica (positiva para clarear, negativa para escurecer).
- * @param color Objeto {r, g, b}.
- * @param amount A quantidade para ajustar cada componente.
- * @returns Uma string `rgb(r, g, b)` com os novos valores.
- */
-export const adjustRgbColor = (color: {r: number, g: number, b: number}, amount: number): string => {
-    const clamp = (val: number) => Math.max(0, Math.min(255, val));
-    return `rgb(${clamp(color.r + amount)}, ${clamp(color.g + amount)}, ${clamp(color.b + amount)})`;
-};
-
-/**
- * Converte uma cor RGB para uma string RGBA com uma opacidade específica.
- * @param color Objeto {r, g, b}.
- * @param opacity A opacidade, de 0 a 1.
- * @returns Uma string `rgba(r, g, b, opacity)`.
- */
-export const rgbToRgba = (color: {r: number, g: number, b: number}, opacity: number): string => {
-    return `rgba(${color.r}, ${color.g}, ${color.b}, ${opacity})`;
-};

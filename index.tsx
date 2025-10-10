@@ -28,7 +28,6 @@ root.render(
 // Register service worker for PWA
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    // FIX: Corrected typo from `service-worker` to `serviceWorker`
     navigator.serviceWorker.register('/sw.js')
       .then(registration => {
         console.log('ServiceWorker registration successful with scope: ', registration.scope);

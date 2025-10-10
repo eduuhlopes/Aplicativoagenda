@@ -1,445 +1,972 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 
 // Components
-import LoginScreen from './components/LoginScreen';
-import Header from './components/Header';
+import AppointmentForm from './components/AppointmentForm';
 import CalendarView from './components/CalendarView';
+import ClientForm from './components/ClientForm';
 import ClientList from './components/ClientList';
+import CollapsibleSection from './components/CollapsibleSection';
+import Header from './components/Header';
+import LoginScreen from './components/LoginScreen';
+import Modal from './components/Modal';
 import FinancialsView from './components/FinancialsView';
 import ServicesView from './components/ServicesView';
-import UserManagement from './components/UserManagement';
-import Settings from './components/Settings';
-import BackupRestore from './components/BackupRestore';
-import ClientForm from './components/ClientForm';
-import AppointmentForm from './components/AppointmentForm';
-import Modal from './components/Modal';
 import Toast from './components/Toast';
+import ThemeSwitcher, { themes } from './components/ThemeSwitcher';
+import BackupRestore from './components/BackupRestore';
+import LogoUploader from './components/LogoUploader';
+import NotificationManager from './components/NotificationManager';
+import UserManagement from './components/UserManagement';
 import BookingRequestManager from './components/BookingRequestManager';
-import PaymentsView from './components/PaymentsView';
-import { getAverageColor, generateGradient, getContrastColor, hexToRgb, adjustRgbColor, rgbToRgba } from './components/colorUtils';
+import DateTimePickerModal from './components/DateTimePickerModal';
+import SmartSchedulerModal from './components/SmartSchedulerModal';
 
-// Types
-import { 
-    Appointment, 
-    Client, 
-    Professional, 
-    Service, 
-    BlockedSlot,
-    EnrichedClient,
-    MonthlyPackage,
-    CustomTheme,
-    StoredProfessional,
-    FinancialData
-} from './types';
 
-// Constants
+// Utils, Types, and Constants
+import { getAverageColor, getContrastColor, generateGradient, hexToRgb } from './components/colorUtils';
+// FIX: Imported StoredProfessional type to correctly type the 'professionals' state.
+import { Appointment, Client, Professional, BlockedSlot, Service, MonthlyPackage, EnrichedClient, ModalInfo, AppointmentStatus, FinancialData, StoredProfessional, ModalButton } from './types';
 import { SERVICES } from './constants';
+import * as emailService from './utils/emailService';
 
-// Helper to parse dates from JSON while loading
+const PlusIcon: React.FC<{className?: string}> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-5 w-5 mr-2"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+    </svg>
+);
+
+const BlockTimeIcon: React.FC<{className?: string}> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-5 w-5 mr-2"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2zM16 14.5l-8-8" />
+    </svg>
+);
+
+const SparklesIcon: React.FC<{className?: string}> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-5 w-5 mr-2"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.293 2.293a1 1 0 010 1.414L10 12l-2.293-2.293a1 1 0 010-1.414L10 6m5 4l2.293-2.293a1 1 0 000-1.414L15 6m-5 4l-2.293 2.293a1 1 0 000 1.414L10 18l2.293-2.293a1 1 0 000-1.414L10 12z" />
+    </svg>
+);
+
+
+// Helper to parse dates from JSON
 const dateTimeReviver = (key: string, value: any) => {
     if ((key === 'datetime' || key === 'endTime' || key === 'date') && typeof value === 'string') {
         const date = new Date(value);
-        if (!isNaN(date.getTime())) return date;
+        if (!isNaN(date.getTime())) {
+            return date;
+        }
     }
     return value;
 };
 
-
-// A custom hook for persisting state to localStorage
-function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
-    const [storedValue, setStoredValue] = useState<T>(() => {
+// Generic hook for using localStorage
+const usePersistentState = <T,>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] => {
+    const [state, setState] = useState<T>(() => {
         try {
-            const item = window.localStorage.getItem(key);
-            return item ? JSON.parse(item, dateTimeReviver) : initialValue;
+            const storedValue = localStorage.getItem(key);
+            return storedValue ? JSON.parse(storedValue, dateTimeReviver) : defaultValue;
         } catch (error) {
-            console.error(`Error reading localStorage key "${key}":`, error);
-            return initialValue;
+            console.error("Error reading from localStorage for key:", key, error);
+            return defaultValue;
         }
     });
 
-    const setValue: React.Dispatch<React.SetStateAction<T>> = useCallback((value) => {
+    useEffect(() => {
         try {
-            const valueToStore = value instanceof Function ? value(storedValue) : value;
-            setStoredValue(valueToStore);
-            window.localStorage.setItem(key, JSON.stringify(valueToStore));
+            localStorage.setItem(key, JSON.stringify(state));
         } catch (error) {
-            console.error(`Error setting localStorage key "${key}":`, error);
+            console.error("Error writing to localStorage for key:", key, error);
         }
-    }, [key, storedValue]);
+    }, [key, state]);
 
-    return [storedValue, setValue];
-}
-
-const defaultCustomTheme: CustomTheme = {
-    primary: '#C77D93',
-    secondary: '#8A5F8A',
-    background: '#F8F7FA',
-    surfaceOpaque: 'rgba(255, 255, 255, 0.85)',
-    textDark: '#4A235A',
-    textBody: '#5E5E5E',
+    return [state, setState];
 };
 
-type View = 'calendar' | 'clients' | 'financials' | 'services' | 'users' | 'settings' | 'backup' | 'payments';
-type ToastMessage = { id: number; message: string; type: 'success' | 'error' };
 
 const App: React.FC = () => {
-    // Authentication
-    const [currentUser, setCurrentUser] = useLocalStorage<Professional | null>('spaco-delas-currentUser', null);
+    // --- STATE MANAGEMENT ---
+    const [currentUser, setCurrentUser] = useState<Professional | null>(null);
     
-    // Core Data
-    const [users, setUsers] = useLocalStorage<Record<string, StoredProfessional>>('spaco-delas-users', {});
-    const [appointments, setAppointments] = useLocalStorage<Appointment[]>('spaco-delas-appointments', []);
-    const [clients, setClients] = useLocalStorage<Client[]>('spaco-delas-clients', []);
-    const [services, setServices] = useLocalStorage<Service[]>('spaco-delas-services', SERVICES);
-    const [blockedSlots, setBlockedSlots] = useLocalStorage<BlockedSlot[]>('spaco-delas-blockedSlots', []);
-    const [monthlyPackage, setMonthlyPackage] = useLocalStorage<MonthlyPackage>('spaco-delas-monthlyPackage', { price: 200 });
-    const [appointmentRequests, setAppointmentRequests] = useLocalStorage<Appointment[]>('spaco-delas-appointment-requests', []);
+    // Data State (now global for the whole application)
+    const [appointments, setAppointments] = usePersistentState<Appointment[]>('spaco-delas-appointments', []);
+    const [clients, setClients] = usePersistentState<Client[]>('spaco-delas-clients', []);
+    const [blockedSlots, setBlockedSlots] = usePersistentState<BlockedSlot[]>('spaco-delas-blockedSlots', []);
+    const [services, setServices] = usePersistentState<Service[]>('spaco-delas-services', SERVICES);
+    const [monthlyPackage, setMonthlyPackage] = usePersistentState<MonthlyPackage>('spaco-delas-package', { serviceName: 'Pé+Mão', price: 180 });
+    // FIX: Changed type to Record<string, StoredProfessional> to correctly handle password data.
+    const [professionals, setProfessionals] = usePersistentState<Record<string, StoredProfessional>>('spaco-delas-users', {});
+    const [appointmentRequests, setAppointmentRequests] = usePersistentState<Appointment[]>('spaco-delas-appointment-requests', []);
     
-    // UI State
-    const [currentView, setCurrentView] = useState<View>('calendar');
+    // Global/UI State
+    const [logoUrl, setLogoUrl] = usePersistentState<string>('spaco-delas-global-logo', '/logo.png');
+    const [currentTheme, setCurrentTheme] = usePersistentState<string>('app-theme', 'pink');
+    const [activeView, setActiveView] = useState<'agenda' | 'clients' | 'financeiro' | 'services' | 'settings'>('agenda');
     const [newlyAddedAppointmentId, setNewlyAddedAppointmentId] = useState<number | null>(null);
-
-    // Modal States
-    const [isAppointmentFormOpen, setAppointmentFormOpen] = useState(false);
+    const [viewingClientHistory, setViewingClientHistory] = useState<Client | null>(null);
+    
+    // Form & Modal Visibility State
+    const [isFormVisible, setIsFormVisible] = useState(false);
+    const [isClientFormVisible, setIsClientFormVisible] = useState(false);
+    const [isBookingRequestModalOpen, setIsBookingRequestModalOpen] = useState(false);
+    const [isBlockerModalOpen, setIsBlockerModalOpen] = useState(false);
+    const [isAssistantVisible, setIsAssistantVisible] = useState(false);
     const [appointmentToEdit, setAppointmentToEdit] = useState<Appointment | null>(null);
-    const [isClientFormOpen, setClientFormOpen] = useState(false);
     const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
-    const [isBookingRequestModalOpen, setBookingRequestModalOpen] = useState(false);
-    const [modalConfig, setModalConfig] = useState<{ isOpen: boolean; title: string; message: string; onConfirm?: () => void; }>({ isOpen: false, title: '', message: '' });
-    
-    // Toast state
-    const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
-    // Theme state
-    const [theme, setTheme] = useLocalStorage('app-theme', 'pink');
-    const [customTheme, setCustomTheme] = useLocalStorage('custom-theme', defaultCustomTheme);
-    const [logoUrl, setLogoUrl] = useLocalStorage('spaco-delas-global-logo', '/logo.png');
+    const [modalInfo, setModalInfo] = useState<ModalInfo>({ isOpen: false, title: '', message: '' });
+    const [toastInfo, setToastInfo] = useState<{ id: number; message: string; type: 'success' | 'error' } | null>(null);
+    const [isNotificationPopoverOpen, setIsNotificationPopoverOpen] = useState(false);
     const [headerStyle, setHeaderStyle] = useState<{ background: string; color: string; notificationBg: string; } | null>(null);
-    
-    // Popover state
-    const [isNotificationPopoverOpen, setNotificationPopoverOpen] = useState(false);
+    const appContainerRef = useRef<HTMLDivElement>(null);
 
-    const professionals = useMemo((): Professional[] => {
-        return Object.entries(users).map(([username, data]) => ({
+    // --- EFFECTS ---
+
+    // Check for logged-in user in session storage
+    useEffect(() => {
+        try {
+            const storedUser = sessionStorage.getItem('spaco-delas-currentUser');
+            if (storedUser) {
+                setCurrentUser(JSON.parse(storedUser));
+            }
+        } catch (e) {
+            console.error("Failed to load user from session storage", e);
+        }
+    }, []);
+    
+    // Helper to generate lighter/darker shades for CSS variables.
+    const adjustRgbColor = (color: {r: number, g: number, b: number}, amount: number) => {
+        const clamp = (val: number) => Math.max(0, Math.min(255, val));
+        return `rgb(${clamp(color.r + amount)}, ${clamp(color.g + amount)}, ${clamp(color.b + amount)})`;
+    };
+
+    // Apply theme based on user profile color or global theme setting
+    useEffect(() => {
+        const root = document.documentElement;
+
+        const applyDynamicTheme = (hexColor: string) => {
+            const rgb = hexToRgb(hexColor);
+            if (!rgb) {
+                applyStaticTheme(currentTheme); // Fallback if color is invalid
+                return;
+            }
+
+            // Set CSS variables for a cohesive theme
+            root.style.setProperty('--primary', hexColor);
+            root.style.setProperty('--primary-light', adjustRgbColor(rgb, 30));
+            root.style.setProperty('--primary-hover', adjustRgbColor(rgb, -20));
+            root.style.setProperty('--accent', adjustRgbColor(rgb, 30));
+
+            // Remove data-theme to ensure our variables take precedence
+            root.removeAttribute('data-theme');
+            
+            // Set header style (which can use a gradient)
+            setHeaderStyle({
+                background: generateGradient(rgb.r, rgb.g, rgb.b),
+                color: getContrastColor(rgb.r, rgb.g, rgb.b),
+                notificationBg: `rgba(${Math.max(0, rgb.r - 20)}, ${Math.max(0, rgb.g - 20)}, ${Math.max(0, rgb.b - 20)}, 0.5)`
+            });
+        };
+
+        const applyStaticTheme = (themeName: string) => {
+            // Clear any dynamically set properties
+            root.style.removeProperty('--primary');
+            root.style.removeProperty('--primary-light');
+            root.style.removeProperty('--primary-hover');
+            root.style.removeProperty('--accent');
+            
+            // Set the theme using the pre-defined class
+            root.setAttribute('data-theme', themeName);
+
+            // Set the header based on the theme's primary color
+            const theme = themes.find(t => t.name === themeName);
+            const primaryColor = theme ? theme.color : '#C77D93';
+            const rgb = hexToRgb(primaryColor);
+            if (rgb) {
+                setHeaderStyle({
+                    background: generateGradient(rgb.r, rgb.g, rgb.b),
+                    color: getContrastColor(rgb.r, rgb.g, rgb.b),
+                    notificationBg: `rgba(${Math.max(0, rgb.r - 20)}, ${Math.max(0, rgb.g - 20)}, ${Math.max(0, rgb.b - 20)}, 0.5)`
+                });
+            }
+        };
+
+        // Priority: Professional Color > Global Theme
+        if (currentUser?.color) {
+            applyDynamicTheme(currentUser.color);
+        } else {
+            applyStaticTheme(currentTheme);
+        }
+
+    }, [currentTheme, currentUser]);
+    
+    // --- DERIVED STATE & MEMOS ---
+    
+    // Transform professionals record into an array for easier use in components
+    const professionalsList = useMemo((): Professional[] => {
+        // FIX: Safely construct Professional[] from StoredProfessional data, omitting passwords and providing fallbacks for optional fields.
+        return Object.entries(professionals).map(([username, data]) => ({
             username,
             name: data.name,
             role: data.role || 'professional',
             assignedServices: data.assignedServices || [],
-            bio: data.bio,
-            avatarUrl: data.avatarUrl,
-            color: data.color,
-            workSchedule: data.workSchedule
+            bio: data.bio || '',
+            avatarUrl: data.avatarUrl || '',
+            color: data.color || '#C77D93',
+            workSchedule: data.workSchedule || {},
         }));
-    }, [users]);
-    
-    const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
-        const id = Date.now();
-        setToasts(prev => [...prev, { id, message, type }]);
-        setTimeout(() => {
-            setToasts(prev => prev.filter(t => t.id !== id));
-        }, 3000);
-    }, []);
-    
-    const handleLogin = (user: Professional) => {
-        setCurrentUser(user);
-    };
+    }, [professionals]);
 
-    const handleLogout = () => {
-        setCurrentUser(null);
-        window.localStorage.removeItem('spaco-delas-currentUser');
-    };
-
-    const enrichedClients: EnrichedClient[] = useMemo(() => {
+    // Calculate client stats
+    const enrichedClients = useMemo((): EnrichedClient[] => {
         return clients.map(client => {
             const clientAppointments = appointments.filter(a => a.clientPhone === client.phone);
             const totalSpent = clientAppointments
                 .filter(a => a.status === 'completed')
                 .reduce((sum, a) => sum + a.services.reduce((s, serv) => s + serv.value, 0), 0);
-            
-            const completedAppointments = clientAppointments
-                .filter(a => a.status === 'completed')
-                .sort((a,b) => new Date(b.datetime).getTime() - new Date(a.datetime).getTime());
 
+            const lastVisit = clientAppointments
+                .filter(a => a.status === 'completed')
+                .sort((a, b) => b.datetime.getTime() - a.datetime.getTime())[0];
+            
             let daysSinceLastVisit: number | null = null;
-            if(completedAppointments.length > 0) {
-                const lastVisit = completedAppointments[0].datetime;
-                daysSinceLastVisit = Math.floor((new Date().getTime() - new Date(lastVisit).getTime()) / (1000 * 3600 * 24));
+            if(lastVisit) {
+                const diffTime = Math.abs(new Date().getTime() - lastVisit.datetime.getTime());
+                daysSinceLastVisit = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             }
 
             const cancellationCount = clientAppointments.filter(a => a.status === 'cancelled').length;
             
-            return {
-                ...client,
-                totalSpent,
-                daysSinceLastVisit,
-                cancellationCount,
-            };
-        });
+            return { ...client, totalSpent, daysSinceLastVisit, cancellationCount };
+        }).sort((a, b) => b.totalSpent - a.totalSpent);
     }, [clients, appointments]);
 
-    const financialData: FinancialData = useMemo(() => {
+    // Get appointments for notification popover (next 24 hours)
+    const notificationAppointments = useMemo(() => {
+        const now = new Date();
+        const next24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        return appointments
+            .filter(a => a.datetime > now && a.datetime <= next24Hours && a.status === 'scheduled')
+            .sort((a, b) => a.datetime.getTime() - b.datetime.getTime());
+    }, [appointments]);
+    
+     // Calculate comprehensive financial data
+    const financialData = useMemo((): FinancialData => {
+        const monthlyRevenue: { [key: string]: number } = {};
+        const revenueByService: { [serviceName: string]: number } = {};
+        const revenueByProfessional: { [professionalName: string]: number } = {};
+
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
+        const currentMonthKey = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
         
-        const completedAppointments = appointments.filter(a => a.status === 'completed');
+        let projectedRevenueCurrentMonth = 0;
+        let totalAnnualRevenue = 0;
+
+        for (const appt of appointments) {
+            const apptDate = appt.datetime;
+            const value = appt.services.reduce((sum, s) => sum + s.value, 0);
+
+            // Completed appointments contribute to historical monthly revenue and detailed breakdowns
+            if (appt.status === 'completed') {
+                const monthKey = `${apptDate.getFullYear()}-${String(apptDate.getMonth()).padStart(2, '0')}`;
+                monthlyRevenue[monthKey] = (monthlyRevenue[monthKey] || 0) + value;
+                if (apptDate.getFullYear() === currentYear) {
+                    totalAnnualRevenue += value;
+                }
+                // Breakdown calculations
+                appt.services.forEach(service => {
+                    revenueByService[service.name] = (revenueByService[service.name] || 0) + service.value;
+                });
+                const professionalName = professionals[appt.professionalUsername]?.name || appt.professionalUsername;
+                revenueByProfessional[professionalName] = (revenueByProfessional[professionalName] || 0) + value;
+            }
+
+            // Scheduled/Confirmed/Delayed appointments in the current month contribute to projection
+            if (apptDate.getFullYear() === currentYear && apptDate.getMonth() === currentMonth) {
+                if (['scheduled', 'confirmed', 'delayed'].includes(appt.status)) {
+                    projectedRevenueCurrentMonth += value;
+                }
+            }
+        }
         
-        const getRevenue = (appt: Appointment) => appt.services.reduce((sum, s) => sum + s.value, 0);
+        const completedMonthsValues = Object.values(monthlyRevenue);
+        const averageMonthlyRevenue = completedMonthsValues.length > 0
+            ? completedMonthsValues.reduce((a, b) => a + b, 0) / completedMonthsValues.length
+            : 0;
+            
+        const currentMonthRevenue = monthlyRevenue[currentMonthKey] || 0;
+        // The total projection includes what's already completed this month
+        projectedRevenueCurrentMonth += currentMonthRevenue; 
 
-        const currentMonthRevenue = completedAppointments
-            .filter(a => new Date(a.datetime).getFullYear() === currentYear && new Date(a.datetime).getMonth() === currentMonth)
-            .reduce((sum, a) => sum + getRevenue(a), 0);
-        
-        const futureAppointmentsInMonth = appointments
-            .filter(a => new Date(a.datetime).getFullYear() === currentYear && new Date(a.datetime).getMonth() === currentMonth && new Date(a.datetime) > now && a.status !== 'cancelled')
-            .reduce((sum, a) => sum + getRevenue(a), 0);
-
-        const projectedRevenueCurrentMonth = currentMonthRevenue + futureAppointmentsInMonth;
-
-        const monthlyRevenue: { [key: string]: number } = {};
-        completedAppointments.forEach(a => {
-            const date = new Date(a.datetime);
-            const key = `${date.getFullYear()}-${String(date.getMonth()).padStart(2,'0')}`; // YYYY-MM format
-            monthlyRevenue[key] = (monthlyRevenue[key] || 0) + getRevenue(a);
-        });
-
-        const revenueValues = Object.values(monthlyRevenue);
-        const averageMonthlyRevenue = revenueValues.length > 0 ? revenueValues.reduce((a, b) => a + b, 0) / revenueValues.length : 0;
-        
-        const totalAnnualRevenue = completedAppointments
-            .filter(a => new Date(a.datetime).getFullYear() === currentYear)
-            .reduce((sum, a) => sum + getRevenue(a), 0);
-
-        const revenueByService: { [key: string]: number } = {};
-        completedAppointments.forEach(a => {
-            a.services.forEach(s => {
-                revenueByService[s.name] = (revenueByService[s.name] || 0) + s.value;
-            });
-        });
-
-        const revenueByProfessional: { [key: string]: number } = {};
-        completedAppointments.forEach(a => {
-            const professional = professionals.find(p => p.username === a.professionalUsername);
-            const name = professional?.name || a.professionalUsername;
-            revenueByProfessional[name] = (revenueByProfessional[name] || 0) + getRevenue(a);
-        });
-
-        return { currentMonthRevenue, projectedRevenueCurrentMonth, averageMonthlyRevenue, totalAnnualRevenue, monthlyRevenue, revenueByService, revenueByProfessional };
+        return {
+            monthlyRevenue,
+            currentMonthRevenue,
+            projectedRevenueCurrentMonth,
+            averageMonthlyRevenue,
+            totalAnnualRevenue,
+            revenueByService,
+            revenueByProfessional,
+        };
     }, [appointments, professionals]);
 
-    const notificationAppointments = useMemo(() => {
-        const now = new Date();
-        const in24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-        return appointments.filter(a => {
-            const apptDate = new Date(a.datetime);
-            return apptDate > now && apptDate <= in24Hours && (a.status === 'scheduled' || a.status === 'confirmed');
-        }).sort((a,b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime());
-    }, [appointments]);
+    // --- HANDLERS ---
+    
+    // Toast and Modal helpers
+    const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+        setToastInfo({ id: Date.now(), message, type });
+        setTimeout(() => setToastInfo(null), 3000);
+    }, []);
 
-    const handleSaveAppointment = (appointmentData: Omit<Appointment, 'id'> | Appointment) => {
-        let isNew = !('id' in appointmentData);
-        const newId = isNew ? Date.now() : (appointmentData as Appointment).id;
+    const showModal = useCallback((title: string, message: string, onConfirm?: () => void, buttons?: ModalButton[]) => {
+        setModalInfo({ isOpen: true, title, message, onConfirm, buttons });
+    }, []);
 
-        if (isNew) {
-            setAppointments(prev => [...prev, { id: newId, ...appointmentData as Omit<Appointment, 'id'> }]);
-            showToast('Agendamento criado com sucesso!');
-            setNewlyAddedAppointmentId(newId);
-            setTimeout(() => setNewlyAddedAppointmentId(null), 3000);
-        } else {
-            setAppointments(prev => prev.map(a => a.id === (appointmentData as Appointment).id ? (appointmentData as Appointment) : a));
-            showToast('Agendamento atualizado!');
-        }
-        setAppointmentFormOpen(false);
-        setAppointmentToEdit(null);
+    const closeModal = useCallback(() => setModalInfo(prev => ({ ...prev, isOpen: false })), []);
+    
+    // Auth
+    const handleLogin = useCallback((user: Professional) => {
+        setCurrentUser(user);
+        sessionStorage.setItem('spaco-delas-currentUser', JSON.stringify(user));
+        showToast(`Bem-vinda, ${user.name}!`, 'success');
+    }, [showToast]);
+
+    const handleLogout = useCallback(() => {
+        showModal('Sair do Sistema', 'Você tem certeza que deseja sair?', () => {
+            setCurrentUser(null);
+            sessionStorage.removeItem('spaco-delas-currentUser');
+            closeModal();
+        });
+    }, [showModal, closeModal]);
+
+    // Appointment Form
+    const handleOpenForm = (appt: Appointment | null) => {
+        setAppointmentToEdit(appt);
+        setIsFormVisible(true);
     };
 
-    const handleSaveClient = (clientData: Omit<Client, 'id'> | Client) => {
-        if ('id' in clientData) {
-            setClients(prev => prev.map(c => c.id === clientData.id ? clientData : c));
-            showToast('Cliente atualizado com sucesso!');
-        } else {
-            setClients(prev => [...prev, { id: String(Date.now()), ...clientData }]);
-            showToast('Cliente adicionado com sucesso!');
-        }
-        setClientFormOpen(false);
+    const handleCloseForm = useCallback(() => {
+        setIsFormVisible(false);
+        setAppointmentToEdit(null);
+    }, []);
+    
+    // Smart Scheduler Assistant
+    const handleAssistantSchedule = useCallback((data: Partial<Appointment>) => {
+        // This receives the data from the AI and pre-fills the form
+        setAppointmentToEdit(data as Appointment); // Cast as Appointment, form will handle missing ID
+        setIsAssistantVisible(false);
+        setIsFormVisible(true);
+    }, []);
+
+    // Client Form
+    const handleOpenClientForm = (client: Client | null) => {
+        setClientToEdit(client);
+        setIsClientFormVisible(true);
+    };
+
+    const handleCloseClientForm = useCallback(() => {
+        setIsClientFormVisible(false);
         setClientToEdit(null);
+    }, []);
+    
+    const handleViewClientHistory = useCallback((client: Client) => {
+        handleCloseForm();
+        // Delay allows form to animate out before view switch
+        setTimeout(() => {
+            setViewingClientHistory(client);
+            setActiveView('clients');
+        }, 150);
+    }, [handleCloseForm]);
+
+    // Notification Handlers
+    const openWhatsApp = (appointment: Appointment, messageType: 'new' | 'update' | 'cancel') => {
+        const phone = appointment.clientPhone.replace(/\D/g, '');
+        const services = appointment.services.map(s => s.name).join(', ');
+        const date = appointment.datetime.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' });
+        const time = appointment.datetime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        
+        let message = '';
+        switch(messageType) {
+            case 'new':
+                message = `Olá ${appointment.clientName}! 😊 Seu agendamento para *${services}* foi confirmado para o dia *${date}* às *${time}*. Mal podemos esperar para te ver! ✨`;
+                break;
+            case 'update':
+                message = `Olá ${appointment.clientName}! Informamos que seu agendamento foi alterado. O novo horário para *${services}* é *${date}* às *${time}*. Por favor, confirme se está tudo certo.`;
+                break;
+            case 'cancel':
+                message = `Olá ${appointment.clientName}, confirmando o cancelamento do seu agendamento de *${services}* do dia *${date}* às *${time}*. Se precisar, é só chamar para reagendar.`;
+                break;
+        }
+
+        window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, '_blank');
     };
     
-    const handleUpdateService = (updatedService: Service) => {
-        setServices(prev => prev.map(s => s.name === updatedService.name ? updatedService : s));
-        showToast(`Serviço ${updatedService.name} atualizado!`, 'success');
-    };
+    const showNotificationOptionsModal = useCallback((appointment: Appointment, type: 'new' | 'update' | 'cancel') => {
+        if (!appointment.clientPhone && !appointment.clientEmail) return;
 
-    const handleExport = () => {
-        const allData = {
-            users, appointments, clients, services, blockedSlots, monthlyPackage,
-            theme, customTheme, logoUrl, appointmentRequests
-        };
-        const dataStr = JSON.stringify(allData, null, 2);
-        const blob = new Blob([dataStr], {type: "application/json"});
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.download = `spacodelas_backup_${new Date().toISOString().split('T')[0]}.json`;
-        link.href = url;
-        link.click();
-        URL.revokeObjectURL(url);
-        showToast("Backup exportado com sucesso!", "success");
-    };
+        const buttons: ModalButton[] = [];
 
-    const handleImport = (data: any) => {
-        try {
-            // Add validation here if needed
-            if (data.users) setUsers(data.users);
-            if (data.appointments) setAppointments(data.appointments);
-            if (data.clients) setClients(data.clients);
-            if (data.services) setServices(data.services);
-            if (data.blockedSlots) setBlockedSlots(data.blockedSlots);
-            if (data.monthlyPackage) setMonthlyPackage(data.monthlyPackage);
-            if (data.theme) setTheme(data.theme);
-            if (data.customTheme) setCustomTheme(data.customTheme);
-            if (data.logoUrl) setLogoUrl(data.logoUrl);
-            if (data.appointmentRequests) setAppointmentRequests(data.appointmentRequests);
-            showToast("Dados importados com sucesso!", "success");
-        } catch (e) {
-            showToast("Falha ao importar dados. O arquivo pode estar corrompido.", "error");
-        }
-    };
-
-    // Dynamic theme and header style effect
-    useEffect(() => {
-        document.documentElement.setAttribute('data-theme', theme);
-        if (theme === 'custom') {
-            const root = document.documentElement;
-            Object.entries(customTheme).forEach(([key, value]) => {
-                const cssVar = `--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
-                root.style.setProperty(cssVar, value);
+        if (appointment.clientPhone) {
+            buttons.push({
+                text: 'Enviar WhatsApp',
+                style: 'secondary',
+                onClick: () => {
+                    openWhatsApp(appointment, type);
+                    closeModal();
+                }
             });
-        } else {
-             const root = document.documentElement;
-             // Clear custom properties if not using custom theme
-             Object.keys(defaultCustomTheme).forEach(key => {
-                 const cssVar = `--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
-                 root.style.removeProperty(cssVar);
-             });
+        }
+
+        if (appointment.clientEmail) {
+            buttons.push({
+                text: 'Enviar E-mail',
+                style: 'primary',
+                onClick: async () => {
+                    closeModal(); // Close modal immediately for better UX
+                    try {
+                        const professional = professionalsList.find(p => p.username === appointment.professionalUsername);
+                        const templateParams: emailService.TemplateParams = {
+                            client_name: appointment.clientName,
+                            client_email: appointment.clientEmail,
+                            client_phone: appointment.clientPhone,
+                            appointment_date: appointment.datetime.toLocaleDateString('pt-BR', { dateStyle: 'full' }),
+                            appointment_time: appointment.datetime.toLocaleTimeString('pt-BR', { timeStyle: 'short' }),
+                            professional_name: professional?.name || 'N/A',
+                            services_list: appointment.services.map(s => s.name).join(', '),
+                            total_value: appointment.services.reduce((sum, s) => sum + s.value, 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                        };
+                        await emailService.sendAppointmentConfirmationEmail(templateParams);
+                        showToast('Email de confirmação enviado!', 'success');
+                    } catch (err) {
+                        showToast('Falha ao enviar e-mail. Verifique suas credenciais.', 'error');
+                    }
+                }
+            });
         }
         
-        getAverageColor(logoUrl)
-            .then(rgb => {
-                setHeaderStyle({
-                    background: generateGradient(rgb.r, rgb.g, rgb.b),
-                    color: getContrastColor(rgb.r, rgb.g, rgb.b),
-                    notificationBg: rgbToRgba(rgb, 0.2)
-                });
-            })
-            .catch(() => setHeaderStyle(null)); // Fallback to CSS default
+        if (buttons.length > 0) {
+            showModal(
+                'Notificar Cliente?',
+                `Como você gostaria de notificar ${appointment.clientName} sobre ${type === 'new' ? 'o novo agendamento' : 'as alterações'}?`,
+                undefined,
+                buttons
+            );
+        }
+    }, [closeModal, professionalsList, showToast, showModal]);
 
-    }, [theme, customTheme, logoUrl]);
+    // CRUD Handlers
+    const handleScheduleAppointment = useCallback((newAppointmentData: Omit<Appointment, 'id' | 'status'> & { isPackage?: boolean }) => {
+        const { isPackage, ...appointmentCoreData } = newAppointmentData;
+
+        // Automatically add new client if they don't exist
+        const clientExists = clients.some(client => 
+            client.phone.replace(/\D/g, '') === appointmentCoreData.clientPhone.replace(/\D/g, '')
+        );
+
+        if (!clientExists && appointmentCoreData.clientName && appointmentCoreData.clientPhone) {
+            const newClient: Client = {
+                id: Date.now() + 1, // +1 to avoid collision with appointment ID
+                name: appointmentCoreData.clientName,
+                phone: appointmentCoreData.clientPhone,
+                email: appointmentCoreData.clientEmail,
+                observations: ''
+            };
+            setClients(prev => [...prev, newClient]);
+            showToast(`Nova cliente "${newClient.name}" adicionada à lista!`, 'success');
+        }
+
+        if (isPackage) {
+            const packageId = `pkg-${Date.now()}`;
+            const firstAppointmentDate = new Date(appointmentCoreData.datetime);
+            const appointmentsToCreate: Appointment[] = [];
+            
+            const serviceMao = services.find(s => s.name === 'Manicure');
+            const servicePeMao = services.find(s => s.name === 'Pé+Mão');
+            
+            if (!serviceMao || !servicePeMao) {
+                showToast('Serviços "Manicure" ou "Pé+Mão" não encontrados para criar o pacote.', 'error');
+                return;
+            }
+            
+            const packagePricePerSession = monthlyPackage.price / 4;
+
+            const packageServicesRotation = [
+                [{ ...serviceMao, value: packagePricePerSession }],
+                [{ ...servicePeMao, value: packagePricePerSession }],
+                [{ ...serviceMao, value: packagePricePerSession }],
+                [{ ...servicePeMao, value: packagePricePerSession }],
+            ];
+
+            for (let i = 0; i < 4; i++) {
+                const appointmentDate = new Date(firstAppointmentDate);
+                appointmentDate.setDate(firstAppointmentDate.getDate() + (i * 7));
+                
+                const servicesForThisWeek = packageServicesRotation[i];
+                const totalDuration = servicesForThisWeek.reduce((sum, s) => sum + s.duration, 0);
+                const endTime = new Date(appointmentDate.getTime() + totalDuration * 60 * 1000);
+
+                const isRetroactive = new Date(appointmentDate) < new Date();
+                const status: AppointmentStatus = isRetroactive ? 'completed' : 'scheduled';
+
+                const newAppt: Appointment = {
+                    ...appointmentCoreData,
+                    id: Date.now() + i,
+                    status: status,
+                    datetime: appointmentDate,
+                    endTime: endTime,
+                    services: servicesForThisWeek,
+                    isPackageAppointment: true,
+                    packageId: packageId,
+                };
+                appointmentsToCreate.push(newAppt);
+            }
+            
+            setAppointments(prev => [...prev, ...appointmentsToCreate].sort((a,b) => a.datetime.getTime() - b.datetime.getTime()));
+            setNewlyAddedAppointmentId(appointmentsToCreate[0].id);
+            setTimeout(() => setNewlyAddedAppointmentId(null), 2000);
+            
+            const isFirstAppointmentRetroactive = new Date(appointmentsToCreate[0].datetime) < new Date();
+            if (isFirstAppointmentRetroactive) {
+                const datesList = appointmentsToCreate.map(appt => 
+                    `- ${appt.datetime.toLocaleDateString('pt-BR')} às ${appt.datetime.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})} (Status: ${appt.status === 'completed' ? 'Finalizado' : 'Agendado'})`
+                ).join('\n');
+
+                showModal(
+                    'Pacote Retroativo Criado',
+                    `O pacote foi criado com as seguintes datas e status:\n\n${datesList}`,
+                    undefined,
+                    [{ text: 'OK', onClick: closeModal, style: 'primary' }]
+                );
+            } else {
+                showToast('Pacote de 4 agendamentos criado com sucesso!', 'success');
+                showNotificationOptionsModal(appointmentsToCreate[0], 'new');
+            }
+
+        } else {
+            const isRetroactive = new Date(appointmentCoreData.datetime) < new Date();
+            const status: AppointmentStatus = isRetroactive ? 'completed' : 'scheduled';
+
+            const newAppointment: Appointment = {
+                ...appointmentCoreData,
+                id: Date.now(),
+                status: status,
+            };
+
+            setAppointments(prev => [...prev, newAppointment].sort((a,b) => a.datetime.getTime() - b.datetime.getTime()));
+            setNewlyAddedAppointmentId(newAppointment.id);
+            setTimeout(() => setNewlyAddedAppointmentId(null), 2000);
+            
+            if (isRetroactive) {
+                showToast('Agendamento retroativo adicionado como finalizado!', 'success');
+            } else {
+                showToast('Agendamento criado com sucesso!', 'success');
+                showNotificationOptionsModal(newAppointment, 'new');
+            }
+        }
+    }, [clients, services, monthlyPackage.price, showToast, setClients, setAppointments, showNotificationOptionsModal, showModal, closeModal]);
+
+    const handleUpdateAppointment = useCallback((updatedAppointment: Appointment) => {
+        const isRetroactive = new Date(updatedAppointment.datetime) < new Date();
+        // If appointment is moved to the past, and it's not already finished/cancelled, mark as completed.
+        if (isRetroactive && ['scheduled', 'confirmed', 'delayed'].includes(updatedAppointment.status)) {
+            updatedAppointment.status = 'completed';
+            showToast('Agendamento movido para o passado e marcado como finalizado!', 'success');
+        } else {
+            showToast('Agendamento atualizado!', 'success');
+        }
+
+        setAppointments(prev => 
+            prev.map(a => a.id === updatedAppointment.id ? updatedAppointment : a)
+            .sort((a, b) => a.datetime.getTime() - b.datetime.getTime())
+        );
+        
+        // Do not show notification options for retroactive appointments, but do for cancellations
+        if (!isRetroactive && updatedAppointment.status !== 'cancelled') {
+            showNotificationOptionsModal(updatedAppointment, 'update');
+        } else if (updatedAppointment.status === 'cancelled') {
+            showNotificationOptionsModal(updatedAppointment, 'cancel');
+        }
+    }, [showToast, setAppointments, showNotificationOptionsModal]);
+
+    const handleMarkAsDelayed = useCallback((appointment: Appointment) => {
+        setAppointments(prev => prev.map(a => a.id === appointment.id ? { ...a, status: 'delayed' } : a));
+        showToast(`${appointment.clientName} marcada como atrasada.`, 'success');
+    }, [setAppointments, showToast]);
+
+    const handleSaveClient = useCallback((clientData: Omit<Client, 'id'> | Client) => {
+        if ('id' in clientData) { // Editing existing client
+            setClients(prev => prev.map(c => c.id === clientData.id ? clientData : c));
+            showToast('Cliente atualizada com sucesso!', 'success');
+        } else { // Adding new client
+            const newClient: Client = { ...clientData, id: Date.now() };
+            setClients(prev => [...prev, newClient]);
+            showToast('Cliente adicionada com sucesso!', 'success');
+        }
+        handleCloseClientForm();
+    }, [handleCloseClientForm, showToast, setClients]);
+    
+    const handleUpdateService = useCallback((updatedService: Service) => {
+        setServices(prevServices =>
+            prevServices.map(service =>
+                service.name === updatedService.name ? updatedService : service
+            )
+        );
+        showToast('Serviço atualizado com sucesso!', 'success');
+    }, [setServices, showToast]);
+
+    const handleBlockSlot = useCallback((data: { date: Date, isFullDay?: boolean, startTime?: string, endTime?: string }) => {
+        const newBlockedSlot: BlockedSlot = {
+            id: Date.now(),
+            date: data.date,
+            isFullDay: data.isFullDay ?? false,
+            startTime: data.startTime,
+            endTime: data.endTime,
+        };
+        setBlockedSlots(prev => [...prev, newBlockedSlot]);
+        showToast('Horário bloqueado com sucesso!', 'success');
+        setIsBlockerModalOpen(false);
+    }, [setBlockedSlots, showToast]);
+
+    // Booking Request Handlers
+    const handleApproveRequest = useCallback((requestToApprove: Appointment) => {
+        // Change status to 'scheduled' and add to main appointments
+        const approvedAppointment = { ...requestToApprove, status: 'scheduled' as const };
+        setAppointments(prev => [...prev, approvedAppointment].sort((a,b) => a.datetime.getTime() - b.datetime.getTime()));
+
+        // Remove from requests
+        setAppointmentRequests(prev => prev.filter(req => req.id !== requestToApprove.id));
+        
+        showToast('Solicitação aprovada e adicionada à agenda!', 'success');
+        showNotificationOptionsModal(approvedAppointment, 'new');
+    }, [setAppointments, setAppointmentRequests, showToast, showNotificationOptionsModal]);
+
+    const handleRejectRequest = useCallback((requestId: number) => {
+        setAppointmentRequests(prev => prev.filter(req => req.id !== requestId));
+        showToast('Solicitação rejeitada.', 'success');
+    }, [setAppointmentRequests, showToast]);
+    
+    // Client Sync Handler
+    const handleImportClientsFromAppointments = useCallback(() => {
+        const existingClientPhones = new Set(clients.map(c => c.phone.replace(/\D/g, '')));
+        const newClientsMap = new Map<string, Omit<Client, 'id'>>();
+
+        appointments.forEach(appt => {
+            const sanitizedPhone = appt.clientPhone.replace(/\D/g, '');
+            if (sanitizedPhone && !existingClientPhones.has(sanitizedPhone) && !newClientsMap.has(sanitizedPhone)) {
+                newClientsMap.set(sanitizedPhone, {
+                    name: appt.clientName,
+                    phone: appt.clientPhone,
+                    email: appt.clientEmail,
+                    observations: ''
+                });
+            }
+        });
+
+        const newClientsToAdd = Array.from(newClientsMap.values()).map((c, index) => ({
+            ...c,
+            id: Date.now() + index
+        }));
+
+        if (newClientsToAdd.length > 0) {
+            showModal(
+                'Importar Clientes',
+                `Encontramos ${newClientsToAdd.length} cliente(s) em seus agendamentos que não estão na sua lista. Deseja adicioná-los agora?`,
+                () => {
+                    setClients(prev => [...prev, ...newClientsToAdd]);
+                    showToast(`${newClientsToAdd.length} nova(s) cliente(s) adicionada(s)!`, 'success');
+                    closeModal();
+                }
+            );
+        } else {
+            showToast('Nenhuma nova cliente encontrada nos agendamentos.', 'success');
+        }
+    }, [appointments, clients, showModal, showToast, setClients, closeModal]);
+
+
+    // Settings Handlers
+    const handleExportData = useCallback(() => {
+        try {
+            const dataToExport = {
+                appointments,
+                clients,
+                blockedSlots,
+                services,
+                monthlyPackage,
+                logoUrl,
+                currentTheme,
+                professionals,
+            };
+            const dataStr = JSON.stringify(dataToExport, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `spaco_delas_backup_${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            showToast('Backup exportado com sucesso!', 'success');
+        } catch (e) {
+            console.error(e);
+            showModal('Erro de Exportação', 'Não foi possível gerar o arquivo de backup.');
+        }
+    }, [appointments, clients, blockedSlots, services, monthlyPackage, logoUrl, currentTheme, professionals, showToast, showModal]);
+
+    const handleImportData = useCallback((data: any) => {
+        try {
+            // Add basic validation
+            if (data && Array.isArray(data.appointments) && Array.isArray(data.clients)) {
+                setAppointments(data.appointments || []);
+                setClients(data.clients || []);
+                setBlockedSlots(data.blockedSlots || []);
+                setServices(data.services || SERVICES);
+                setMonthlyPackage(data.monthlyPackage || { serviceName: 'Pé+Mão', price: 180 });
+                setLogoUrl(data.logoUrl || '/logo.png');
+                setCurrentTheme(data.currentTheme || 'pink');
+                setProfessionals(data.professionals || {});
+                showToast('Dados restaurados com sucesso!', 'success');
+            } else {
+                 throw new Error("Formato de arquivo inválido.");
+            }
+        } catch(e: any) {
+             showModal('Erro de Importação', `Falha ao restaurar dados. Detalhe: ${e.message}`);
+        }
+    }, [setAppointments, setClients, setBlockedSlots, setServices, setMonthlyPackage, setLogoUrl, setCurrentTheme, setProfessionals, showToast, showModal]);
     
 
+    // --- RENDER LOGIC ---
+
+    const renderActiveView = () => {
+        if (!currentUser) return null; // Should not happen if LoginScreen guard is working
+        switch (activeView) {
+            case 'agenda':
+                return (
+                    <div>
+                        <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-2">
+                            <h2 className="text-3xl font-bold text-[var(--text-dark)]">Agenda</h2>
+                            <div className="flex items-center gap-2">
+                                 <button
+                                    onClick={() => setIsAssistantVisible(true)}
+                                    className="flex items-center px-4 py-2 bg-white border-2 border-dashed border-[var(--accent)] text-[var(--primary)] font-bold rounded-lg shadow-sm hover:bg-[var(--highlight)] transition-all active:scale-95"
+                                >
+                                    <SparklesIcon />
+                                    Agendamento com IA
+                                </button>
+                                <button
+                                    onClick={() => setIsBlockerModalOpen(true)}
+                                    className="flex items-center px-4 py-2 bg-white border border-[var(--border)] text-[var(--secondary)] font-bold rounded-lg shadow-sm hover:bg-[var(--highlight)] transition-all active:scale-95"
+                                >
+                                    <BlockTimeIcon />
+                                    Bloquear Horário
+                                </button>
+                                <button
+                                    onClick={() => handleOpenForm(null)}
+                                    className="flex items-center px-4 py-2 bg-[var(--primary)] text-white font-bold rounded-lg shadow-md hover:bg-[var(--primary-hover)] transition-transform transform hover:scale-105 active:scale-95"
+                                >
+                                    <PlusIcon />
+                                    Agendamento
+                                </button>
+                            </div>
+                        </div>
+                        <CalendarView 
+                            appointments={appointments} 
+                            blockedSlots={blockedSlots} 
+                            onEditAppointment={handleOpenForm}
+                            onUpdateAppointment={handleUpdateAppointment}
+                            newlyAddedAppointmentId={newlyAddedAppointmentId}
+                            professionals={professionalsList}
+                            currentUser={currentUser}
+                        />
+                    </div>
+                );
+            case 'clients':
+                return (
+                    <ClientList 
+                        clients={enrichedClients} 
+                        appointments={appointments}
+                        onAddClient={() => handleOpenClientForm(null)} 
+                        onEditClient={client => handleOpenClientForm(client)} 
+                        viewingHistoryFor={viewingClientHistory}
+                        onClearHistoryView={() => setViewingClientHistory(null)}
+                        onImportClients={handleImportClientsFromAppointments}
+                    />
+                );
+            case 'financeiro':
+                return <FinancialsView financialData={financialData} />;
+            case 'services':
+                return <ServicesView services={services} onUpdateService={handleUpdateService} monthlyPackage={monthlyPackage} onUpdatePackage={setMonthlyPackage} />;
+            case 'settings':
+                return (
+                    <div className="max-w-4xl mx-auto space-y-8">
+                        <h2 className="text-4xl font-bold text-[var(--text-dark)] text-center">Configurações</h2>
+                        
+                        <div className="text-center">
+                            <h3 className="text-xl font-bold text-[var(--text-dark)]">Link Público para Agendamento</h3>
+                            <p className="text-md text-[var(--text-body)] mb-2">Compartilhe este link com suas clientes:</p>
+                            <div className="flex items-center justify-center gap-2 p-2 bg-[var(--highlight)] border border-dashed border-[var(--border)] rounded-lg">
+                                <a href="/agendar" target="_blank" className="font-mono text-[var(--primary)] font-bold hover:underline">
+                                    {window.location.origin}/agendar
+                                </a>
+                                <button
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(`${window.location.origin}/agendar`);
+                                        showToast('Link copiado!', 'success');
+                                    }}
+                                    className="p-2 text-[var(--secondary)] hover:bg-[var(--border)] rounded-md transition-colors"
+                                    title="Copiar link"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M7 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z" /><path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4a2 2 0 00-2-2H4z" /></svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <ThemeSwitcher currentTheme={currentTheme} onThemeChange={setCurrentTheme} />
+                        <LogoUploader currentLogo={logoUrl} onLogoChange={(url) => setLogoUrl(url || '/logo.png')} onError={showModal} />
+                        <CollapsibleSection title="Backup e Restauração">
+                            <BackupRestore onExport={handleExportData} onImport={handleImportData} onError={showModal} />
+                        </CollapsibleSection>
+                         <CollapsibleSection title="Gerenciar Profissionais">
+                            <UserManagement showToast={showToast} showModal={showModal} services={services} professionals={professionals} onUsersChange={setProfessionals} />
+                        </CollapsibleSection>
+                        <CollapsibleSection title="Notificações Push">
+                            <NotificationManager />
+                        </CollapsibleSection>
+                    </div>
+                );
+        }
+    };
+    
+    // Login Screen Guard
     if (!currentUser) {
         return <LoginScreen onLogin={handleLogin} showToast={showToast} />;
     }
 
-    const renderView = () => {
-        switch (currentView) {
-            case 'calendar': return <CalendarView appointments={appointments} blockedSlots={blockedSlots} onEditAppointment={(appt) => { setAppointmentToEdit(appt); setAppointmentFormOpen(true); }} onUpdateAppointment={handleSaveAppointment} newlyAddedAppointmentId={newlyAddedAppointmentId} professionals={professionals} currentUser={currentUser} />;
-            case 'clients': return <ClientList clients={enrichedClients} appointments={appointments} onAddClient={() => { setClientToEdit(null); setClientFormOpen(true); }} onEditClient={(client) => { setClientToEdit(client as Client); setClientFormOpen(true); }} onClearHistoryView={() => {}} onImportClients={() => showToast("Importação de contatos em desenvolvimento.")} />;
-            case 'financials': return <FinancialsView financialData={financialData} />;
-            case 'services': return <ServicesView services={services} onUpdateService={handleUpdateService} monthlyPackage={monthlyPackage} onUpdatePackage={setMonthlyPackage}/>;
-            case 'users': return <UserManagement showToast={showToast} showModal={(title, message, onConfirm) => setModalConfig({isOpen: true, title, message, onConfirm})} services={services} professionals={users} onUsersChange={setUsers} />;
-            case 'settings': return <Settings currentTheme={theme} onThemeChange={setTheme} customTheme={customTheme} onCustomThemeChange={setCustomTheme} defaultCustomTheme={defaultCustomTheme} showToast={showToast} />;
-            case 'backup': return <BackupRestore onExport={handleExport} onImport={handleImport} onError={(title, message) => setModalConfig({isOpen: true, title, message})} />;
-            case 'payments': return <PaymentsView />;
-            default: return <div>View not found</div>;
-        }
-    };
-    
+    // Main App Layout
     return (
-        <div className="flex h-screen bg-gray-100 font-sans text-[var(--text-body)]">
-             {/* Simple Sidebar */}
-            <nav className="w-16 md:w-56 bg-white border-r border-gray-200 flex flex-col">
-                <div className="flex items-center justify-center h-20 border-b border-gray-200">
-                    <img src={logoUrl} alt="Logo" className="h-10 w-10 rounded-full object-cover"/>
-                    <span className="hidden md:block ml-3 font-brand text-2xl font-bold text-[var(--primary)]">Spaço Delas</span>
-                </div>
-                <div className="flex-1 overflow-y-auto">
-                    {/* Navigation items can be mapped here */}
-                    <button onClick={() => setCurrentView('calendar')} className={`flex items-center p-4 w-full text-left ${currentView === 'calendar' ? 'bg-pink-100 text-pink-700' : 'hover:bg-gray-100'}`}> <span className="md:ml-3">Agenda</span> </button>
-                    <button onClick={() => setCurrentView('clients')} className={`flex items-center p-4 w-full text-left ${currentView === 'clients' ? 'bg-pink-100 text-pink-700' : 'hover:bg-gray-100'}`}> <span className="md:ml-3">Clientes</span> </button>
-                    <button onClick={() => setCurrentView('financials')} className={`flex items-center p-4 w-full text-left ${currentView === 'financials' ? 'bg-pink-100 text-pink-700' : 'hover:bg-gray-100'}`}> <span className="md:ml-3">Financeiro</span> </button>
-                    <button onClick={() => setCurrentView('services')} className={`flex items-center p-4 w-full text-left ${currentView === 'services' ? 'bg-pink-100 text-pink-700' : 'hover:bg-gray-100'}`}> <span className="md:ml-3">Serviços</span> </button>
-                    {currentUser.role === 'admin' && (
-                         <button onClick={() => setCurrentView('users')} className={`flex items-center p-4 w-full text-left ${currentView === 'users' ? 'bg-pink-100 text-pink-700' : 'hover:bg-gray-100'}`}> <span className="md:ml-3">Profissionais</span> </button>
-                    )}
-                    <button onClick={() => setCurrentView('settings')} className={`flex items-center p-4 w-full text-left ${currentView === 'settings' ? 'bg-pink-100 text-pink-700' : 'hover:bg-gray-100'}`}> <span className="md:ml-3">Configurações</span> </button>
-                    <button onClick={() => setCurrentView('backup')} className={`flex items-center p-4 w-full text-left ${currentView === 'backup' ? 'bg-pink-100 text-pink-700' : 'hover:bg-gray-100'}`}> <span className="md:ml-3">Backup</span> </button>
-                </div>
-            </nav>
-
-            <main className="flex-1 flex flex-col overflow-hidden">
+        <div ref={appContainerRef} className="bg-[var(--background)] min-h-screen text-[var(--text-body)] transition-colors duration-500 pb-20">
+            <div className={`p-4 sm:p-6 transition-all duration-500 ${headerStyle ? '' : 'bg-[var(--primary)]'}`}>
                 <Header 
-                    logoUrl={logoUrl}
+                    logoUrl={logoUrl} 
                     headerStyle={headerStyle}
                     notificationAppointments={notificationAppointments}
                     bookingRequests={appointmentRequests}
                     isNotificationPopoverOpen={isNotificationPopoverOpen}
-                    onToggleNotificationPopover={() => setNotificationPopoverOpen(!isNotificationPopoverOpen)}
-                    onOpenBookingRequestModal={() => setBookingRequestModalOpen(true)}
+                    onToggleNotificationPopover={() => setIsNotificationPopoverOpen(prev => !prev)}
+                    onOpenBookingRequestModal={() => setIsBookingRequestModalOpen(true)}
                     currentUser={currentUser}
                     onLogout={handleLogout}
                 />
-                <div className="flex-1 overflow-x-hidden overflow-y-auto bg-[var(--background)] p-4 sm:p-6 lg:p-8">
-                    {renderView()}
+            </div>
+
+            {/* Navigation */}
+            <nav className="flex justify-center bg-[var(--surface-opaque)]/80 backdrop-blur-sm shadow-md sticky top-0 z-30 border-b border-[var(--border)]">
+                {([
+                    { label: 'Agenda', view: 'agenda' },
+                    { label: 'Clientes', view: 'clients' }, 
+                    { label: 'Financeiro', view: 'financeiro' },
+                    { label: 'Serviços', view: 'services' }, 
+                    { label: 'Configurações', view: 'settings' }
+                ] as const).map(item => (
+                    <button 
+                        key={item.view}
+                        onClick={() => setActiveView(item.view)}
+                        className={`px-3 sm:px-6 py-4 text-sm sm:text-base font-bold transition-all border-b-4 ${
+                            activeView === item.view 
+                                ? 'text-[var(--primary)] border-[var(--primary)]' 
+                                : 'text-[var(--text-body)] border-transparent hover:bg-[var(--highlight)]'
+                        }`}
+                    >
+                        {item.label}
+                    </button>
+                ))}
+            </nav>
+            
+            <main className="p-4 sm:p-8">
+                <div key={activeView} className="animate-view-in">
+                    {renderActiveView()}
                 </div>
             </main>
 
-            {/* Modals & Toasts */}
-             {isAppointmentFormOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full">
-                        <AppointmentForm onSave={handleSaveAppointment} onCancel={() => { setAppointmentFormOpen(false); setAppointmentToEdit(null); }} appointmentToEdit={appointmentToEdit} services={services} clients={clients} professionals={professionals} currentUser={currentUser} blockedSlots={blockedSlots} />
-                    </div>
+            {/* Floating Action Button */}
+            {!['settings', 'services', 'financeiro'].includes(activeView) && !isFormVisible && !isClientFormVisible && (
+                <button
+                    onClick={() => activeView === 'clients' ? handleOpenClientForm(null) : handleOpenForm(null)}
+                    className="fab"
+                    aria-label={activeView === 'clients' ? "Nova Cliente" : "Novo Agendamento"}
+                >
+                    <PlusIcon className="h-8 w-8" />
+                </button>
+            )}
+
+            {/* Modals and Forms as Overlays */}
+            {(isFormVisible || isClientFormVisible) && <div className="fixed inset-0 bg-black bg-opacity-50 z-50 animate-backdrop-in" onClick={isFormVisible ? handleCloseForm : handleCloseClientForm}></div>}
+            
+            <div className={`form-container ${isFormVisible ? 'visible' : ''}`}>
+                 {isFormVisible && 
+                    <AppointmentForm 
+                        onSchedule={handleScheduleAppointment} 
+                        appointmentToEdit={appointmentToEdit}
+                        onUpdate={handleUpdateAppointment}
+                        onCancelEdit={handleCloseForm}
+                        appointments={appointments}
+                        blockedSlots={blockedSlots}
+                        onMarkAsDelayed={handleMarkAsDelayed}
+                        services={services}
+                        clients={clients}
+                        onViewClientHistory={handleViewClientHistory}
+                        professionals={professionalsList}
+                        currentUser={currentUser}
+                        showToast={showToast}
+                        monthlyPackagePrice={monthlyPackage.price}
+                    />
+                }
+            </div>
+
+            <div className={`form-container ${isClientFormVisible ? 'visible' : ''}`}>
+                 {isClientFormVisible && 
+                    <ClientForm
+                        onSave={handleSaveClient}
+                        clientToEdit={clientToEdit}
+                        onCancel={handleCloseClientForm}
+                        existingClients={clients}
+                    />
+                }
+            </div>
+            
+            <BookingRequestManager
+                isOpen={isBookingRequestModalOpen}
+                onClose={() => setIsBookingRequestModalOpen(false)}
+                requests={appointmentRequests}
+                professionals={professionalsList}
+                onApprove={handleApproveRequest}
+                onReject={handleRejectRequest}
+            />
+
+            <DateTimePickerModal
+                isOpen={isBlockerModalOpen}
+                onClose={() => setIsBlockerModalOpen(false)}
+                onConfirm={handleBlockSlot}
+                showBlockDayToggle={true}
+                blockedSlots={blockedSlots}
+            />
+            
+            <SmartSchedulerModal
+                isOpen={isAssistantVisible}
+                onClose={() => setIsAssistantVisible(false)}
+                onSchedule={handleAssistantSchedule}
+                services={services}
+                professionals={professionalsList}
+                showToast={showToast}
+                currentUser={currentUser}
+            />
+
+            <Modal {...modalInfo} onClose={closeModal} />
+            
+            {toastInfo && (
+                <div key={toastInfo.id} className="toast-container">
+                    <Toast message={toastInfo.message} type={toastInfo.type} />
                 </div>
             )}
-            
-            {isClientFormOpen && (
-                 <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-                        <ClientForm onSave={handleSaveClient} onCancel={() => { setClientFormOpen(false); setClientToEdit(null); }} clientToEdit={clientToEdit} existingClients={clients} />
-                    </div>
-                 </div>
-            )}
-            
-            <BookingRequestManager 
-                isOpen={isBookingRequestModalOpen}
-                onClose={() => setBookingRequestModalOpen(false)}
-                requests={appointmentRequests}
-                professionals={professionals}
-                onApprove={(req) => {
-                    const approvedAppointment = { ...req, status: 'scheduled' as const };
-                    handleSaveAppointment(approvedAppointment);
-                    setAppointmentRequests(prev => prev.filter(r => r.id !== req.id));
-                    showToast("Solicitação aprovada e agendada!", 'success');
-                }}
-                onReject={(id) => {
-                    setAppointmentRequests(prev => prev.filter(r => r.id !== id));
-                    showToast("Solicitação rejeitada.", 'success');
-                }}
-            />
-
-            <Modal 
-                isOpen={modalConfig.isOpen}
-                title={modalConfig.title}
-                message={modalConfig.message}
-                onClose={() => setModalConfig({ ...modalConfig, isOpen: false })}
-                onConfirm={modalConfig.onConfirm}
-            />
-
-            <div className="fixed bottom-5 right-5 z-[80] space-y-2">
-                {toasts.map(toast => (
-                    <Toast key={toast.id} message={toast.message} type={toast.type} />
-                ))}
-            </div>
         </div>
     );
 };
