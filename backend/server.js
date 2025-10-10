@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const path = require('path'); // Adicionado para lidar com caminhos de arquivo
+const path = require('path');
 const { db, saveDatabase } = require('./db');
 
 const app = express();
@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// --- ROTAS DA API (DEVEM VIR ANTES DE SERVIR O FRONTEND) ---
+// --- ROTAS DA API ---
 
 // [GET] /api/agendamentos - Retorna todos os agendamentos
 app.get('/api/agendamentos', (req, res) => {
@@ -159,13 +159,14 @@ app.delete('/api/profissionais/:username', (req, res) => {
 });
 
 // --- SERVIR ARQUIVOS DO FRONTEND ---
-// Servir arquivos estáticos da pasta raiz do projeto.
-// __dirname é 'backend', '..' volta para a raiz.
+
+// Servir arquivos estáticos (como .tsx, .css, .png) da pasta raiz do projeto.
+// Esta linha deve vir ANTES da rota catch-all.
 app.use(express.static(path.join(__dirname, '..')));
 
-// Rota catch-all: Para qualquer outra requisição GET, serve o index.html.
-// Isso permite que o roteamento do lado do cliente (React) funcione para rotas como /agendar.
-app.get('*', (req, res) => {
+// Rota catch-all: Para qualquer requisição GET que NÃO seja para a API,
+// serve o index.html. Isso permite que o roteamento do React funcione.
+app.get(/^(?!\/api).*/, (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'index.html'));
 });
 
