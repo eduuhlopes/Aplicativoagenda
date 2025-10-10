@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
-const db = require('./db'); // Importa nosso banco de dados em memória
+// Altera a importação para obter o objeto 'db' e a função 'saveDatabase'
+const { db, saveDatabase } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -37,6 +38,7 @@ app.post('/api/agendamentos', (req, res) => {
   };
 
   db.appointments.push(newAppointment);
+  saveDatabase(); // Salva as alterações no arquivo
   
   console.log('Novo agendamento adicionado:', newAppointment.clientName, 'em', newAppointment.datetime.toLocaleDateString());
   
@@ -64,6 +66,7 @@ app.put('/api/agendamentos/:id', (req, res) => {
   };
   
   db.appointments[appointmentIndex] = updatedAppointment;
+  saveDatabase(); // Salva as alterações no arquivo
   
   console.log('Agendamento atualizado:', updatedAppointment.clientName);
   res.status(200).json(updatedAppointment);
@@ -102,6 +105,7 @@ app.post('/api/clientes', (req, res) => {
   };
 
   db.clients.push(newClient);
+  saveDatabase(); // Salva as alterações no arquivo
   console.log('Nova cliente adicionada:', newClient.name);
   res.status(201).json(newClient);
 });
@@ -123,6 +127,7 @@ app.put('/api/clientes/:id', (req, res) => {
         id: clientId,
     };
     db.clients[clientIndex] = updatedClient;
+    saveDatabase(); // Salva as alterações no arquivo
     console.log('Cliente atualizado:', updatedClient.name);
     res.status(200).json(updatedClient);
 });
@@ -158,6 +163,7 @@ app.post('/api/profissionais', (req, res) => {
   };
 
   db.professionals[userKey] = newProfessional;
+  saveDatabase(); // Salva as alterações no arquivo
   console.log('Nova profissional adicionada:', newProfessional.name);
 
   res.status(201).json({ ...newProfessional, username: userKey });
@@ -182,6 +188,7 @@ app.put('/api/profissionais/:username', (req, res) => {
     };
 
     db.professionals[username] = updatedProfessional;
+    saveDatabase(); // Salva as alterações no arquivo
     console.log('Profissional atualizado:', updatedProfessional.name);
     
     res.status(200).json({ ...updatedProfessional, username });
@@ -200,6 +207,7 @@ app.delete('/api/profissionais/:username', (req, res) => {
     }
 
     delete db.professionals[username];
+    saveDatabase(); // Salva as alterações no arquivo
     console.log('Profissional removido:', username);
     res.status(204).send(); // No Content
 });
