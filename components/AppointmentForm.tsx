@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { GoogleGenerativeAI } from 'https://aistudiocdn.com/@google/generative-ai';
+// FIX: The correct class name is GoogleGenAI, not GoogleGenerativeAI.
+import { GoogleGenAI } from '@google/genai';
 import { Appointment, BlockedSlot, AppointmentStatus, Service, Client, Professional } from '../types';
 import DateTimePickerModal from './DateTimePickerModal';
 
@@ -11,6 +12,7 @@ interface AppointmentFormProps {
     appointments: Appointment[];
     blockedSlots: BlockedSlot[];
     onMarkAsDelayed: (appointment: Appointment) => void;
+    onCompleteAppointment: (appointment: Appointment) => void;
     services: Service[];
     clients: Client[];
     onViewClientHistory: (client: Client) => void;
@@ -18,6 +20,8 @@ interface AppointmentFormProps {
     currentUser: Professional;
     showToast: (message: string, type?: 'success' | 'error') => void;
     monthlyPackagePrice: number;
+    prefilledData: Partial<Appointment> | null;
+    onFormReady: () => void;
 }
 
 const CheckIcon = () => (
@@ -40,7 +44,7 @@ const LoadingSpinner = () => (
 );
 
 
-const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointmentToEdit, onUpdate, onCancelEdit, appointments, blockedSlots, onMarkAsDelayed, services, clients, onViewClientHistory, professionals, currentUser, showToast, monthlyPackagePrice }) => {
+const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointmentToEdit, onUpdate, onCancelEdit, appointments, blockedSlots, onMarkAsDelayed, onCompleteAppointment, services, clients, onViewClientHistory, professionals, currentUser, showToast, monthlyPackagePrice, prefilledData, onFormReady }) => {
     const [clientName, setClientName] = useState('');
     const [clientPhone, setClientPhone] = useState('');
     const [clientEmail, setClientEmail] = useState('');
@@ -49,6 +53,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
     const [serviceToAdd, setServiceToAdd] = useState('');
     const [selectedDateTime, setSelectedDateTime] = useState<Date | null>(null);
     const [observations, setObservations] = useState('');
+    const [status, setStatus] = useState<AppointmentStatus>('scheduled');
     const [isPickerOpen, setIsPickerOpen] = useState(false);
     const [modifiedServiceIndices, setModifiedServiceIndices] = useState<Set<number>>(new Set());
     const [isSuccess, setIsSuccess] = useState(false);
@@ -68,6 +73,22 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
         if (professional.role === 'admin') return services; // Admins can book any service
         return services.filter(s => professional.assignedServices.includes(s.name));
     }, [professionalUsername, professionals, services]);
+
+    const resetForm = () => {
+        setClientName('');
+        setClientPhone('');
+        setClientEmail('');
+        setProfessionalUsername('');
+        setSelectedServices([]);
+        setServiceToAdd('');
+        setSelectedDateTime(null);
+        setObservations('');
+        setModifiedServiceIndices(new Set());
+        setSuggestions([]);
+        setIsSuggestionsVisible(false);
+        setSelectedClient(null);
+        setIsPackage(false);
+    };
     
     useEffect(() => {
         if (appointmentToEdit) {
@@ -78,6 +99,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
             setSelectedServices(appointmentToEdit.services);
             setSelectedDateTime(new Date(appointmentToEdit.datetime));
             setObservations(appointmentToEdit.observations || '');
+            setStatus(appointmentToEdit.status);
             setModifiedServiceIndices(new Set());
             const existingClient = clients.find(c => c.phone === appointmentToEdit.clientPhone);
             setSelectedClient(existingClient || null);
@@ -90,8 +112,20 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
             }
         }
         setIsSuccess(false); // Reset success state when form opens or changes
-    }, [appointmentToEdit, clients, currentUser]);
+    }, [appointmentToEdit, currentUser]);
     
+    // This effect runs only when the form is opened with pre-filled data for a new client
+    useEffect(() => {
+        if (prefilledData && onFormReady) {
+            setClientName(prefilledData.clientName || '');
+            setClientPhone(prefilledData.clientPhone || '');
+            setClientEmail(prefilledData.clientEmail || '');
+            // We've used the data, so we call back to clear it in the parent state
+            onFormReady();
+        }
+    }, [prefilledData, onFormReady]);
+
+
      // Effect to close suggestions when clicking outside
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -127,27 +161,9 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
         }
     }, [clientPhone, clients, clientName, clientEmail]);
 
-
-    const resetForm = () => {
-        setClientName('');
-        setClientPhone('');
-        setClientEmail('');
-        setProfessionalUsername('');
-        setSelectedServices([]);
-        setServiceToAdd('');
-        setSelectedDateTime(null);
-        setObservations('');
-        setModifiedServiceIndices(new Set());
-        setSuggestions([]);
-        setIsSuggestionsVisible(false);
-        setSelectedClient(null);
-        setIsPackage(false);
-    };
-
     const handleClientNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
         setClientName(value);
-
         if (value.length > 1) {
             const filteredSuggestions = clients.filter(client => 
                 client.name.toLowerCase().includes(value.toLowerCase()) || 
@@ -184,7 +200,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
         }
         setClientPhone(value);
     };
-
+    
     const handleAddService = () => {
         if (serviceToAdd && !selectedServices.some(s => s.name === serviceToAdd)) {
             const serviceData = services.find(s => s.name === serviceToAdd);
@@ -270,7 +286,8 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
         if (!observations) return;
         setIsOrganizing(true);
         try {
-            const ai = new GoogleGenerativeAI({apiKey: process.env.API_KEY});
+            // FIX: The correct class name is GoogleGenAI, not GoogleGenerativeAI.
+            const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
             const prompt = `Você é um assistente de salão de beleza. Reorganize as anotações a seguir sobre o agendamento de uma cliente em observações claras e estruturadas. Use bullet points (usando asteriscos *) para informações chave. Foque nas preferências da cliente, avisos importantes (como alergias, em maiúsculas), e serviços mencionados que talvez precisem ser adicionados. Torne as anotações mais profissionais e fáceis de ler. As anotações são:\n\n"${observations}"`;
             
             const response = await ai.models.generateContent({
@@ -292,7 +309,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
             setIsOrganizing(false);
         }
     };
-
+    
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (isSuccess) return; // Prevent multiple submissions
@@ -324,7 +341,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
             category,
             isPackage,
         };
-
+        
         if (appointmentToEdit) {
             onUpdate({ ...appointmentToEdit, ...appointmentData });
         } else {
@@ -332,13 +349,12 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
         }
         
         setIsSuccess(true);
-
         setTimeout(() => {
             onCancelEdit();
         }, 1500);
     };
-    
-    const handleStatusChange = (newStatus: 'confirmed' | 'completed') => {
+
+    const handleStatusChange = (newStatus: 'confirmed') => {
         if(appointmentToEdit) {
             onUpdate({ ...appointmentToEdit, status: newStatus });
             onCancelEdit();
@@ -407,7 +423,6 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                             </div>
                         )}
                     </div>
-
                     <div>
                         <label htmlFor="client-phone" className="block text-md font-medium text-[var(--text-dark)] mb-1">
                             Telefone (WhatsApp):
@@ -422,7 +437,6 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                     </label>
                     <input type="email" id="client-email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} placeholder="email@exemplo.com" className={inputClasses} />
                 </div>
-
 
                 <div>
                     <label htmlFor="professional-select" className="block text-md font-medium text-[var(--text-dark)] mb-1">Profissional:</label>
@@ -479,16 +493,15 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                                 </button>
                             </div>
                         </div>
-
                         {selectedServices.length > 0 && (
                             <div className="space-y-3 p-3 bg-[var(--highlight)] border border-[var(--border)] rounded-lg">
                                 {selectedServices.map((service, index) => {
                                     const isModified = modifiedServiceIndices.has(index);
                                     return (
                                     <div key={index} className={`flex items-center gap-2 p-2 bg-white rounded-md shadow-sm border-2 transition-colors ${isModified ? 'border-[var(--info)]' : 'border-transparent'}`}>
-                                        <select 
-                                            value={service.name} 
-                                            onChange={(e) => handleServiceChange(index, e.target.value)}
+                                        <select
+                                             value={service.name}
+                                             onChange={(e) => handleServiceChange(index, e.target.value)}
                                             className="text-[var(--text-dark)] font-medium flex-grow bg-white border border-[var(--border)] rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-[var(--accent)] focus:border-[var(--accent)] transition-colors py-1 px-2"
                                         >
                                             {availableServices.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
@@ -498,7 +511,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                                             <input type="number" value={service.duration} onChange={(e) => handleServiceDurationChange(index, e.target.value)} step="5" min="0" className="w-16 px-2 py-1 bg-white border border-[var(--border)] rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
                                             <span className="text-xs text-[var(--secondary)]">min</span>
                                         </div>
-                                    
+                                        
                                         <div className="flex items-baseline gap-1">
                                             <span className="text-sm text-[var(--secondary)]">R$</span>
                                             <input type="number" value={service.value} onChange={(e) => handleServiceValueChange(index, e.target.value)} step="0.01" min="0" className="w-20 px-2 py-1 bg-white border border-[var(--border)] rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
@@ -509,7 +522,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                                                 <CheckIcon />
                                             </button>
                                         )}
-                                    
+                                        
                                         <button type="button" onClick={() => handleRemoveService(index)} className="p-1 text-[var(--danger)] hover:bg-red-100 rounded-full transition-transform active:scale-90">
                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
                                         </button>
@@ -520,6 +533,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                         )}
                     </>
                 )}
+                
                 {(selectedServices.length > 0 || isPackage) && (
                     <div className="border-t border-[var(--border)] pt-2 mt-2 flex justify-between items-center">
                         <div className="text-left">
@@ -534,7 +548,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                         </div>
                     </div>
                 )}
-                
+
                 <div>
                     <div className="flex justify-between items-center mb-1">
                         <label htmlFor="observations" className="block text-md font-medium text-[var(--text-dark)]">
@@ -562,7 +576,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                         className={`${inputClasses} text-left text-[var(--text-dark)] font-semibold flex items-center justify-between`}
                     >
                         <span>
-                            {selectedDateTime 
+                            {selectedDateTime
                                 ? selectedDateTime.toLocaleString('pt-BR', { dateStyle: 'full', timeStyle: 'short' })
                                 : 'Selecione um horário...'}
                         </span>
@@ -571,7 +585,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                         </svg>
                     </button>
                 </div>
-
+            
                 <div className="mt-6 flex flex-col items-center">
                     <button type="submit" className="w-full py-3 px-4 btn-primary-gradient text-white font-bold text-lg rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--primary)] transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:grayscale" disabled={!clientName || !clientPhone || !professionalUsername || (!isPackage && selectedServices.length === 0) || !selectedDateTime || isSuccess}>
                         {appointmentToEdit ? 'Salvar Alterações' : 'Concluir Agendamento'}
@@ -580,6 +594,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                         Após salvar, você poderá notificar a cliente sobre as alterações.
                     </p>
                 </div>
+
                 {appointmentToEdit && (
                     <div className="border-t border-[var(--border)] mt-4 pt-4 space-y-3">
                         <p className="text-md font-semibold text-center text-[var(--text-dark)]">Status Atual: <span className={`font-bold uppercase ${appointmentToEdit.status === 'delayed' ? 'text-[var(--warning)]' : 'text-[var(--primary)]'}`}>{appointmentToEdit.status}</span></p>
@@ -590,7 +605,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                                 </button>
                             )}
                             {(appointmentToEdit.status === 'scheduled' || appointmentToEdit.status === 'confirmed' || appointmentToEdit.status === 'delayed') && (
-                                <button type="button" onClick={() => handleStatusChange('completed')} className="w-full py-2 px-4 bg-[var(--secondary)] text-white font-semibold rounded-lg shadow-sm hover:opacity-90 transition-all text-sm active:scale-95">
+                                <button type="button" onClick={() => onCompleteAppointment(appointmentToEdit)} className="w-full py-2 px-4 bg-[var(--secondary)] text-white font-semibold rounded-lg shadow-sm hover:opacity-90 transition-all text-sm active:scale-95">
                                     Marcar como Finalizado
                                 </button>
                             )}
@@ -601,7 +616,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                                     Marcar como Atrasado
                                 </button>
                             )}
-                            {(appointmentToEdit.status === 'scheduled' || appointmentToEdit.status === 'confirmed' || appointmentToEdit.status === 'delayed') && (
+                             {(appointmentToEdit.status === 'scheduled' || appointmentToEdit.status === 'confirmed' || appointmentToEdit.status === 'delayed') && (
                                 <button
                                     type="button"
                                     onClick={handleCancelAppointment}
@@ -616,6 +631,7 @@ const AppointmentForm: React.FC<AppointmentFormProps> = ({ onSchedule, appointme
                     </div>
                 )}
             </div>
+
             <DateTimePickerModal
                 isOpen={isPickerOpen}
                 onClose={() => setIsPickerOpen(false)}

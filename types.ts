@@ -1,3 +1,11 @@
+
+export interface Service {
+  name: string;
+  value: number;
+  duration: number; // in minutes
+  category: string;
+}
+
 export type AppointmentStatus = 'pending' | 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'delayed';
 
 export interface Appointment {
@@ -15,6 +23,7 @@ export interface Appointment {
   reminderSent?: boolean;
   isPackageAppointment?: boolean;
   packageId?: string;
+  paymentStatus?: 'paid' | 'pending';
 }
 
 export interface ModalButton {
@@ -85,20 +94,12 @@ export interface EnrichedClient extends Client {
   cancellationCount: number;
 }
 
-
 export interface BlockedSlot {
   id: number;
   date: Date;
   startTime?: string;
   endTime?: string;
   isFullDay: boolean;
-}
-
-export interface Service {
-  name: string;
-  value: number;
-  duration: number;
-  category: string;
 }
 
 export interface MonthlyPackage {
@@ -116,4 +117,27 @@ export interface FinancialData {
   // New detailed financial metrics
   revenueByService: { [serviceName: string]: number };
   revenueByProfessional: { [professionalName: string]: number };
+}
+
+// --- New types for Public Payment Links ---
+
+// Represents the mapping of a public link ID to a client's specific pending appointments
+export interface PaymentLink {
+    id: string; // Unique ID for the link URL
+    clientId: number;
+    appointmentIds: number[]; // The specific appointments included in this payment link
+    totalDue: number;
+    createdAt: Date;
+}
+
+// Represents an uploaded payment proof for validation
+export interface PaymentProof {
+    id: string; // Corresponds to the PaymentLink ID
+    clientId: number;
+    appointmentIds: number[];
+    totalDue: number;
+    imageDataUrl: string; // The uploaded image as a Base64 Data URL
+    status: 'pending_validation' | 'validated' | 'rejected' | 'manual_approval';
+    validatedAt?: Date;
+    extractedValue?: number; // The value extracted by the AI
 }

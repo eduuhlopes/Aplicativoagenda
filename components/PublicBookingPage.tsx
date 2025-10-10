@@ -225,7 +225,11 @@ const PublicBookingPage: React.FC = () => {
                         availableProfessionals.map(prof => (
                             <button key={prof.username} onClick={() => handleSelectProfessional(prof)} className="w-full flex items-center gap-4 p-4 bg-white border border-[var(--border)] rounded-lg shadow-sm text-left hover:border-[var(--primary)] hover:shadow-md transition-all">
                                 {prof.avatarUrl ? (
-                                    <img src={prof.avatarUrl} alt={prof.name} className="h-16 w-16 rounded-full object-cover flex-shrink-0" />
+                                    <img 
+                                        src={prof.avatarUrl} 
+                                        alt={prof.name} 
+                                        className="h-16 w-16 rounded-full object-cover flex-shrink-0" 
+                                    />
                                 ) : (
                                     <div className="h-16 w-16 rounded-full flex-shrink-0 bg-gray-100 flex items-center justify-center">
                                         <UserIcon />

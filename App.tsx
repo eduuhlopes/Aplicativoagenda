@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { GoogleGenAI } from '@google/genai';
 
 // Components
 import AppointmentForm from './components/AppointmentForm';
@@ -11,6 +12,8 @@ import LoginScreen from './components/LoginScreen';
 import Modal from './components/Modal';
 import FinancialsView from './components/FinancialsView';
 import ServicesView from './components/ServicesView';
+import PaymentsView from './components/PaymentsView';
+import Settings from './components/Settings';
 import Toast from './components/Toast';
 import ThemeSwitcher, { themes } from './components/ThemeSwitcher';
 import BackupRestore from './components/BackupRestore';
@@ -21,13 +24,13 @@ import BookingRequestManager from './components/BookingRequestManager';
 import DateTimePickerModal from './components/DateTimePickerModal';
 import SmartSchedulerModal from './components/SmartSchedulerModal';
 
-
 // Utils, Types, and Constants
 import { getAverageColor, getContrastColor, generateGradient, hexToRgb } from './components/colorUtils';
 // FIX: Imported StoredProfessional type to correctly type the 'professionals' state.
-import { Appointment, Client, Professional, BlockedSlot, Service, MonthlyPackage, EnrichedClient, ModalInfo, AppointmentStatus, FinancialData, StoredProfessional, ModalButton } from './types';
+import { Appointment, Client, Professional, BlockedSlot, Service, MonthlyPackage, EnrichedClient, ModalInfo, AppointmentStatus, FinancialData, StoredProfessional, ModalButton, PaymentLink, PaymentProof } from './types';
 import { SERVICES } from './constants';
 import * as emailService from './utils/emailService';
+
 
 const PlusIcon: React.FC<{className?: string}> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-5 w-5 mr-2"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -47,10 +50,10 @@ const SparklesIcon: React.FC<{className?: string}> = ({ className }) => (
     </svg>
 );
 
-
 // Helper to parse dates from JSON
 const dateTimeReviver = (key: string, value: any) => {
-    if ((key === 'datetime' || key === 'endTime' || key === 'date') && typeof value === 'string') {
+    const dateKeys = ['datetime', 'endTime', 'date', 'createdAt', 'validatedAt'];
+    if (dateKeys.includes(key) && typeof value === 'string') {
         const date = new Date(value);
         if (!isNaN(date.getTime())) {
             return date;
@@ -82,7 +85,6 @@ const usePersistentState = <T,>(key: string, defaultValue: T): [T, React.Dispatc
     return [state, setState];
 };
 
-
 const App: React.FC = () => {
     // --- STATE MANAGEMENT ---
     const [currentUser, setCurrentUser] = useState<Professional | null>(null);
@@ -96,14 +98,16 @@ const App: React.FC = () => {
     // FIX: Changed type to Record<string, StoredProfessional> to correctly handle password data.
     const [professionals, setProfessionals] = usePersistentState<Record<string, StoredProfessional>>('spaco-delas-users', {});
     const [appointmentRequests, setAppointmentRequests] = usePersistentState<Appointment[]>('spaco-delas-appointment-requests', []);
+    const [paymentLinks, setPaymentLinks] = usePersistentState<Record<string, PaymentLink>>('spaco-delas-payment-links', {});
+    const [paymentProofs, setPaymentProofs] = usePersistentState<PaymentProof[]>('spaco-delas-payment-proofs', []);
     
     // Global/UI State
     const [logoUrl, setLogoUrl] = usePersistentState<string>('spaco-delas-global-logo', '/logo.png');
     const [currentTheme, setCurrentTheme] = usePersistentState<string>('app-theme', 'pink');
-    const [activeView, setActiveView] = useState<'agenda' | 'clients' | 'financeiro' | 'services' | 'settings'>('agenda');
+    const [activeView, setActiveView] = useState<'agenda' | 'clients' | 'financeiro' | 'services' | 'settings' | 'payments'>('agenda');
     const [newlyAddedAppointmentId, setNewlyAddedAppointmentId] = useState<number | null>(null);
     const [viewingClientHistory, setViewingClientHistory] = useState<Client | null>(null);
-    
+        
     // Form & Modal Visibility State
     const [isFormVisible, setIsFormVisible] = useState(false);
     const [isClientFormVisible, setIsClientFormVisible] = useState(false);
@@ -112,14 +116,20 @@ const App: React.FC = () => {
     const [isAssistantVisible, setIsAssistantVisible] = useState(false);
     const [appointmentToEdit, setAppointmentToEdit] = useState<Appointment | null>(null);
     const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
+    const [prefilledDataForNewAppointment, setPrefilledDataForNewAppointment] = useState<Partial<Appointment> | null>(null);
+    
+    const [headerStyle, setHeaderStyle] = useState<{ background: string; color: string; notificationBg: string; } | null>(null);
     const [modalInfo, setModalInfo] = useState<ModalInfo>({ isOpen: false, title: '', message: '' });
     const [toastInfo, setToastInfo] = useState<{ id: number; message: string; type: 'success' | 'error' } | null>(null);
     const [isNotificationPopoverOpen, setIsNotificationPopoverOpen] = useState(false);
-    const [headerStyle, setHeaderStyle] = useState<{ background: string; color: string; notificationBg: string; } | null>(null);
     const appContainerRef = useRef<HTMLDivElement>(null);
 
+    // State for pending appointment review flow
+    const [pendingReviewQueue, setPendingReviewQueue] = useState<Appointment[]>([]);
+    const [currentReviewAppointment, setCurrentReviewAppointment] = useState<Appointment | null>(null);
+    const [appointmentToComplete, setAppointmentToComplete] = useState<Appointment | null>(null);
+    
     // --- EFFECTS ---
-
     // Check for logged-in user in session storage
     useEffect(() => {
         try {
@@ -131,13 +141,39 @@ const App: React.FC = () => {
             console.error("Failed to load user from session storage", e);
         }
     }, []);
-    
+
+    // Find pending appointments on login
+    useEffect(() => {
+        if (currentUser) {
+            const now = new Date();
+            const pending = appointments.filter(a => 
+                new Date(a.datetime) < now &&
+                ['scheduled', 'confirmed', 'delayed'].includes(a.status)
+            ).sort((a,b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime());
+            
+            if (pending.length > 0) {
+                setPendingReviewQueue(pending);
+            }
+        }
+    }, [currentUser, appointments]); // Re-check appointments when it changes
+
+    // Process the review queue
+    useEffect(() => {
+        // Don't show review pop-up if another modal or form is already open
+        if (pendingReviewQueue.length > 0 && !currentReviewAppointment && !appointmentToComplete && !isFormVisible && !isClientFormVisible && !modalInfo.isOpen) {
+            const nextAppointment = pendingReviewQueue[0];
+            setCurrentReviewAppointment(nextAppointment);
+            setPendingReviewQueue(prev => prev.slice(1));
+        }
+    }, [pendingReviewQueue, currentReviewAppointment, appointmentToComplete, isFormVisible, isClientFormVisible, modalInfo.isOpen]);
+
+
     // Helper to generate lighter/darker shades for CSS variables.
     const adjustRgbColor = (color: {r: number, g: number, b: number}, amount: number) => {
         const clamp = (val: number) => Math.max(0, Math.min(255, val));
         return `rgb(${clamp(color.r + amount)}, ${clamp(color.g + amount)}, ${clamp(color.b + amount)})`;
     };
-
+    
     // Apply theme based on user profile color or global theme setting
     useEffect(() => {
         const root = document.documentElement;
@@ -148,16 +184,14 @@ const App: React.FC = () => {
                 applyStaticTheme(currentTheme); // Fallback if color is invalid
                 return;
             }
-
             // Set CSS variables for a cohesive theme
             root.style.setProperty('--primary', hexColor);
             root.style.setProperty('--primary-light', adjustRgbColor(rgb, 30));
             root.style.setProperty('--primary-hover', adjustRgbColor(rgb, -20));
             root.style.setProperty('--accent', adjustRgbColor(rgb, 30));
-
             // Remove data-theme to ensure our variables take precedence
             root.removeAttribute('data-theme');
-            
+                        
             // Set header style (which can use a gradient)
             setHeaderStyle({
                 background: generateGradient(rgb.r, rgb.g, rgb.b),
@@ -172,10 +206,9 @@ const App: React.FC = () => {
             root.style.removeProperty('--primary-light');
             root.style.removeProperty('--primary-hover');
             root.style.removeProperty('--accent');
-            
+                        
             // Set the theme using the pre-defined class
             root.setAttribute('data-theme', themeName);
-
             // Set the header based on the theme's primary color
             const theme = themes.find(t => t.name === themeName);
             const primaryColor = theme ? theme.color : '#C77D93';
@@ -195,11 +228,72 @@ const App: React.FC = () => {
         } else {
             applyStaticTheme(currentTheme);
         }
-
     }, [currentTheme, currentUser]);
+
+    // FIX: Moved showToast definition before validatePaymentProof to resolve used-before-declaration error.
+    // Toast helper
+    const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+        setToastInfo({ id: Date.now(), message, type });
+        setTimeout(() => setToastInfo(null), 3000);
+    }, []);
+
+    // --- AI Payment Proof Validation ---
+    const validatePaymentProof = useCallback(async (proof: PaymentProof) => {
+        const client = clients.find(c => c.id === proof.clientId);
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            
+            const imagePart = {
+                inlineData: {
+                    mimeType: 'image/jpeg',
+                    data: proof.imageDataUrl.split(',')[1],
+                },
+            };
+            const textPart = { text: `Analise a imagem deste comprovante de pagamento. Extraia apenas o valor total pago como um único número, usando ponto como separador decimal (ex: 150.50). Se não conseguir encontrar um valor claro, retorne "0".` };
+            
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: { parts: [imagePart, textPart] },
+            });
     
+            const extractedText = response.text.replace(',', '.').replace(/[^\d.]/g, '');
+            const extractedValue = parseFloat(extractedText);
+    
+            const updatedProof = { ...proof, extractedValue, validatedAt: new Date() };
+    
+            // Use a tolerance for comparison (e.g., 1 cent)
+            if (Math.abs(extractedValue - proof.totalDue) < 0.01 || extractedValue > proof.totalDue) {
+                updatedProof.status = 'validated';
+                setAppointments(prev =>
+                    prev.map(a => proof.appointmentIds.includes(a.id) ? { ...a, paymentStatus: 'paid' } : a)
+                );
+                showToast(`Comprovante de ${client?.name || 'cliente'} validado e quitado pela IA!`, 'success');
+            } else {
+                updatedProof.status = 'rejected';
+                showToast(`IA rejeitou o comprovante de ${client?.name || 'cliente'}. Verifique o valor.`, 'error');
+            }
+            
+            setPaymentProofs(prev => prev.map(p => p.id === proof.id ? updatedProof : p));
+    
+        } catch (error) {
+            console.error("AI Validation Error:", error);
+            showToast(`Erro ao validar comprovante de ${client?.name} com IA.`, 'error');
+            // Mark as rejected if AI fails, for manual review
+            setPaymentProofs(prev => prev.map(p => p.id === proof.id ? { ...p, status: 'rejected', extractedValue: -1 } : p));
+        }
+    }, [clients, setAppointments, setPaymentProofs, showToast]);
+
+    useEffect(() => {
+        const proofsToValidate = paymentProofs.filter(p => p.status === 'pending_validation');
+        if (proofsToValidate.length > 0) {
+            // Process one by one to avoid overwhelming the API or user
+            validatePaymentProof(proofsToValidate[0]);
+        }
+    }, [paymentProofs, validatePaymentProof]);
+
+
     // --- DERIVED STATE & MEMOS ---
-    
+        
     // Transform professionals record into an array for easier use in components
     const professionalsList = useMemo((): Professional[] => {
         // FIX: Safely construct Professional[] from StoredProfessional data, omitting passwords and providing fallbacks for optional fields.
@@ -214,25 +308,25 @@ const App: React.FC = () => {
             workSchedule: data.workSchedule || {},
         }));
     }, [professionals]);
-
+    
     // Calculate client stats
     const enrichedClients = useMemo((): EnrichedClient[] => {
         return clients.map(client => {
             const clientAppointments = appointments.filter(a => a.clientPhone === client.phone);
             const totalSpent = clientAppointments
-                .filter(a => a.status === 'completed')
+                .filter(a => a.status === 'completed' && a.paymentStatus === 'paid')
                 .reduce((sum, a) => sum + a.services.reduce((s, serv) => s + serv.value, 0), 0);
-
+            
             const lastVisit = clientAppointments
                 .filter(a => a.status === 'completed')
                 .sort((a, b) => b.datetime.getTime() - a.datetime.getTime())[0];
-            
+
             let daysSinceLastVisit: number | null = null;
             if(lastVisit) {
                 const diffTime = Math.abs(new Date().getTime() - lastVisit.datetime.getTime());
                 daysSinceLastVisit = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             }
-
+            
             const cancellationCount = clientAppointments.filter(a => a.status === 'cancelled').length;
             
             return { ...client, totalSpent, daysSinceLastVisit, cancellationCount };
@@ -253,10 +347,9 @@ const App: React.FC = () => {
         const monthlyRevenue: { [key: string]: number } = {};
         const revenueByService: { [serviceName: string]: number } = {};
         const revenueByProfessional: { [professionalName: string]: number } = {};
-
         const now = new Date();
-        const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
         const currentMonthKey = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
         
         let projectedRevenueCurrentMonth = 0;
@@ -267,7 +360,7 @@ const App: React.FC = () => {
             const value = appt.services.reduce((sum, s) => sum + s.value, 0);
 
             // Completed appointments contribute to historical monthly revenue and detailed breakdowns
-            if (appt.status === 'completed') {
+            if (appt.status === 'completed' && appt.paymentStatus === 'paid') {
                 const monthKey = `${apptDate.getFullYear()}-${String(apptDate.getMonth()).padStart(2, '0')}`;
                 monthlyRevenue[monthKey] = (monthlyRevenue[monthKey] || 0) + value;
                 if (apptDate.getFullYear() === currentYear) {
@@ -296,8 +389,8 @@ const App: React.FC = () => {
             
         const currentMonthRevenue = monthlyRevenue[currentMonthKey] || 0;
         // The total projection includes what's already completed this month
-        projectedRevenueCurrentMonth += currentMonthRevenue; 
-
+        projectedRevenueCurrentMonth += currentMonthRevenue;
+        
         return {
             monthlyRevenue,
             currentMonthRevenue,
@@ -309,20 +402,16 @@ const App: React.FC = () => {
         };
     }, [appointments, professionals]);
 
-    // --- HANDLERS ---
-    
-    // Toast and Modal helpers
-    const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
-        setToastInfo({ id: Date.now(), message, type });
-        setTimeout(() => setToastInfo(null), 3000);
-    }, []);
 
+    // --- HANDLERS ---
+        
+    // Modal helper
     const showModal = useCallback((title: string, message: string, onConfirm?: () => void, buttons?: ModalButton[]) => {
         setModalInfo({ isOpen: true, title, message, onConfirm, buttons });
     }, []);
 
     const closeModal = useCallback(() => setModalInfo(prev => ({ ...prev, isOpen: false })), []);
-    
+
     // Auth
     const handleLogin = useCallback((user: Professional) => {
         setCurrentUser(user);
@@ -339,16 +428,16 @@ const App: React.FC = () => {
     }, [showModal, closeModal]);
 
     // Appointment Form
-    const handleOpenForm = (appt: Appointment | null) => {
+    const handleOpenForm = useCallback((appt: Appointment | null) => {
         setAppointmentToEdit(appt);
         setIsFormVisible(true);
-    };
+    }, []);
 
     const handleCloseForm = useCallback(() => {
         setIsFormVisible(false);
         setAppointmentToEdit(null);
     }, []);
-    
+
     // Smart Scheduler Assistant
     const handleAssistantSchedule = useCallback((data: Partial<Appointment>) => {
         // This receives the data from the AI and pre-fills the form
@@ -396,15 +485,14 @@ const App: React.FC = () => {
                 message = `Olá ${appointment.clientName}, confirmando o cancelamento do seu agendamento de *${services}* do dia *${date}* às *${time}*. Se precisar, é só chamar para reagendar.`;
                 break;
         }
-
         window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, '_blank');
     };
-    
+
     const showNotificationOptionsModal = useCallback((appointment: Appointment, type: 'new' | 'update' | 'cancel') => {
         if (!appointment.clientPhone && !appointment.clientEmail) return;
 
         const buttons: ModalButton[] = [];
-
+        
         if (appointment.clientPhone) {
             buttons.push({
                 text: 'Enviar WhatsApp',
@@ -415,7 +503,7 @@ const App: React.FC = () => {
                 }
             });
         }
-
+        
         if (appointment.clientEmail) {
             buttons.push({
                 text: 'Enviar E-mail',
@@ -454,6 +542,62 @@ const App: React.FC = () => {
     }, [closeModal, professionalsList, showToast, showModal]);
 
     // CRUD Handlers
+    
+    const cancelAppointment = useCallback((appointment: Appointment) => {
+        const cancelledAppointment = { ...appointment, status: 'cancelled' as const };
+        setAppointments(prev => 
+            prev.map(a => a.id === cancelledAppointment.id ? cancelledAppointment : a)
+            .sort((a, b) => a.datetime.getTime() - b.datetime.getTime())
+        );
+        showToast('Agendamento cancelado.', 'success');
+        showNotificationOptionsModal(cancelledAppointment, 'cancel');
+    }, [setAppointments, showToast, showNotificationOptionsModal]);
+    
+    const handleCompleteAppointment = useCallback((appointment: Appointment) => {
+        setCurrentReviewAppointment(null);
+        setIsFormVisible(false);
+    
+        showModal(
+            "Finalizar Agendamento",
+            `O que deseja fazer com o agendamento de ${appointment.clientName}?`,
+            undefined, // no default onConfirm
+            [
+                { text: 'Voltar', style: 'secondary', onClick: closeModal },
+                { text: 'Cancelar Agendamento', style: 'danger', onClick: () => {
+                    cancelAppointment(appointment);
+                    closeModal();
+                }},
+                { text: 'Finalizar', style: 'primary', onClick: () => {
+                    closeModal(); // close this modal
+                    setAppointmentToComplete(appointment); // open payment modal
+                }},
+            ]
+        );
+    }, [showModal, closeModal, cancelAppointment]);
+
+    const handleUpdateAppointment = useCallback((updatedAppointment: Appointment) => {
+        const isRetroactive = new Date(updatedAppointment.datetime) < new Date();
+        // If appointment is moved to the past, and it's not already finished/cancelled, mark as completed.
+        if (isRetroactive && ['scheduled', 'confirmed', 'delayed'].includes(updatedAppointment.status)) {
+             handleCompleteAppointment(updatedAppointment); // This will trigger the payment modal
+             return; // Stop execution here, payment flow will handle the update
+        } else {
+            showToast('Agendamento atualizado!', 'success');
+        }
+
+        setAppointments(prev => 
+            prev.map(a => a.id === updatedAppointment.id ? updatedAppointment : a)
+            .sort((a, b) => a.datetime.getTime() - b.datetime.getTime())
+        );
+        
+        // Do not show notification options for retroactive appointments, but do for cancellations
+        if (!isRetroactive && updatedAppointment.status !== 'cancelled') {
+            showNotificationOptionsModal(updatedAppointment, 'update');
+        } else if (updatedAppointment.status === 'cancelled') {
+            showNotificationOptionsModal(updatedAppointment, 'cancel');
+        }
+    }, [showToast, setAppointments, showNotificationOptionsModal, handleCompleteAppointment]);
+
     const handleScheduleAppointment = useCallback((newAppointmentData: Omit<Appointment, 'id' | 'status'> & { isPackage?: boolean }) => {
         const { isPackage, ...appointmentCoreData } = newAppointmentData;
 
@@ -461,7 +605,6 @@ const App: React.FC = () => {
         const clientExists = clients.some(client => 
             client.phone.replace(/\D/g, '') === appointmentCoreData.clientPhone.replace(/\D/g, '')
         );
-
         if (!clientExists && appointmentCoreData.clientName && appointmentCoreData.clientPhone) {
             const newClient: Client = {
                 id: Date.now() + 1, // +1 to avoid collision with appointment ID
@@ -473,7 +616,7 @@ const App: React.FC = () => {
             setClients(prev => [...prev, newClient]);
             showToast(`Nova cliente "${newClient.name}" adicionada à lista!`, 'success');
         }
-
+        
         if (isPackage) {
             const packageId = `pkg-${Date.now()}`;
             const firstAppointmentDate = new Date(appointmentCoreData.datetime);
@@ -488,7 +631,6 @@ const App: React.FC = () => {
             }
             
             const packagePricePerSession = monthlyPackage.price / 4;
-
             const packageServicesRotation = [
                 [{ ...serviceMao, value: packagePricePerSession }],
                 [{ ...servicePeMao, value: packagePricePerSession }],
@@ -503,14 +645,14 @@ const App: React.FC = () => {
                 const servicesForThisWeek = packageServicesRotation[i];
                 const totalDuration = servicesForThisWeek.reduce((sum, s) => sum + s.duration, 0);
                 const endTime = new Date(appointmentDate.getTime() + totalDuration * 60 * 1000);
-
                 const isRetroactive = new Date(appointmentDate) < new Date();
                 const status: AppointmentStatus = isRetroactive ? 'completed' : 'scheduled';
-
+                
                 const newAppt: Appointment = {
                     ...appointmentCoreData,
                     id: Date.now() + i,
                     status: status,
+                    paymentStatus: isRetroactive ? 'paid' : undefined, // Assume past package appointments were paid
                     datetime: appointmentDate,
                     endTime: endTime,
                     services: servicesForThisWeek,
@@ -529,7 +671,6 @@ const App: React.FC = () => {
                 const datesList = appointmentsToCreate.map(appt => 
                     `- ${appt.datetime.toLocaleDateString('pt-BR')} às ${appt.datetime.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})} (Status: ${appt.status === 'completed' ? 'Finalizado' : 'Agendado'})`
                 ).join('\n');
-
                 showModal(
                     'Pacote Retroativo Criado',
                     `O pacote foi criado com as seguintes datas e status:\n\n${datesList}`,
@@ -544,11 +685,12 @@ const App: React.FC = () => {
         } else {
             const isRetroactive = new Date(appointmentCoreData.datetime) < new Date();
             const status: AppointmentStatus = isRetroactive ? 'completed' : 'scheduled';
-
+            
             const newAppointment: Appointment = {
                 ...appointmentCoreData,
                 id: Date.now(),
                 status: status,
+                paymentStatus: isRetroactive ? 'paid' : undefined, // Assume past appointments were paid
             };
 
             setAppointments(prev => [...prev, newAppointment].sort((a,b) => a.datetime.getTime() - b.datetime.getTime()));
@@ -563,47 +705,79 @@ const App: React.FC = () => {
             }
         }
     }, [clients, services, monthlyPackage.price, showToast, setClients, setAppointments, showNotificationOptionsModal, showModal, closeModal]);
-
-    const handleUpdateAppointment = useCallback((updatedAppointment: Appointment) => {
-        const isRetroactive = new Date(updatedAppointment.datetime) < new Date();
-        // If appointment is moved to the past, and it's not already finished/cancelled, mark as completed.
-        if (isRetroactive && ['scheduled', 'confirmed', 'delayed'].includes(updatedAppointment.status)) {
-            updatedAppointment.status = 'completed';
-            showToast('Agendamento movido para o passado e marcado como finalizado!', 'success');
-        } else {
-            showToast('Agendamento atualizado!', 'success');
+    
+    // New handlers for payment flow
+    const handleConfirmPayment = useCallback((status: 'paid' | 'pending') => {
+        if (appointmentToComplete) {
+            const finalAppointment = {
+                ...appointmentToComplete,
+                status: 'completed' as const,
+                paymentStatus: status,
+            };
+            setAppointments(prev => 
+                prev.map(a => a.id === finalAppointment.id ? finalAppointment : a)
+                .sort((a, b) => a.datetime.getTime() - b.datetime.getTime())
+            );
+            showToast(`Agendamento finalizado e marcado como ${status === 'paid' ? 'pago' : 'pendente'}.`, 'success');
         }
-
-        setAppointments(prev => 
-            prev.map(a => a.id === updatedAppointment.id ? updatedAppointment : a)
-            .sort((a, b) => a.datetime.getTime() - b.datetime.getTime())
-        );
-        
-        // Do not show notification options for retroactive appointments, but do for cancellations
-        if (!isRetroactive && updatedAppointment.status !== 'cancelled') {
-            showNotificationOptionsModal(updatedAppointment, 'update');
-        } else if (updatedAppointment.status === 'cancelled') {
-            showNotificationOptionsModal(updatedAppointment, 'cancel');
+        setAppointmentToComplete(null);
+    }, [appointmentToComplete, setAppointments, showToast]);
+    
+    const handleMarkAsPaid = useCallback((appointmentId: number) => {
+        const appointment = appointments.find(a => a.id === appointmentId);
+        if (appointment) {
+             setAppointments(prev => 
+                prev.map(a => a.id === appointmentId ? {...a, paymentStatus: 'paid'} : a)
+            );
+            showToast('Pagamento registrado com sucesso!', 'success');
         }
-    }, [showToast, setAppointments, showNotificationOptionsModal]);
+    }, [appointments, setAppointments, showToast]);
+
 
     const handleMarkAsDelayed = useCallback((appointment: Appointment) => {
         setAppointments(prev => prev.map(a => a.id === appointment.id ? { ...a, status: 'delayed' } : a));
         showToast(`${appointment.clientName} marcada como atrasada.`, 'success');
     }, [setAppointments, showToast]);
-
+    
     const handleSaveClient = useCallback((clientData: Omit<Client, 'id'> | Client) => {
         if ('id' in clientData) { // Editing existing client
             setClients(prev => prev.map(c => c.id === clientData.id ? clientData : c));
             showToast('Cliente atualizada com sucesso!', 'success');
+            handleCloseClientForm();
         } else { // Adding new client
             const newClient: Client = { ...clientData, id: Date.now() };
             setClients(prev => [...prev, newClient]);
             showToast('Cliente adicionada com sucesso!', 'success');
-        }
-        handleCloseClientForm();
-    }, [handleCloseClientForm, showToast, setClients]);
+            handleCloseClientForm();
     
+            // After a short delay for animation, show the follow-up modal
+            setTimeout(() => {
+                showModal(
+                    "Cliente Adicionada!",
+                    `"${newClient.name}" foi adicionada. Deseja agendar um horário para ela agora?`,
+                    undefined,
+                    [
+                        { text: 'Voltar à Lista', style: 'secondary', onClick: closeModal },
+                        {
+                            text: `Agendar para ${newClient.name.split(' ')[0]}`,
+                            style: 'primary',
+                            onClick: () => {
+                                closeModal();
+                                setActiveView('agenda');
+                                setPrefilledDataForNewAppointment({
+                                    clientName: newClient.name,
+                                    clientPhone: newClient.phone,
+                                    clientEmail: newClient.email,
+                                });
+                                handleOpenForm(null); // Open a NEW form, which will be populated by the prefilledData
+                            }
+                        }
+                    ]
+                );
+            }, 400); // Corresponds to form slide-out animation duration
+        }
+    }, [handleCloseClientForm, showToast, setClients, showModal, closeModal, handleOpenForm]);
+
     const handleUpdateService = useCallback((updatedService: Service) => {
         setServices(prevServices =>
             prevServices.map(service =>
@@ -612,7 +786,7 @@ const App: React.FC = () => {
         );
         showToast('Serviço atualizado com sucesso!', 'success');
     }, [setServices, showToast]);
-
+    
     const handleBlockSlot = useCallback((data: { date: Date, isFullDay?: boolean, startTime?: string, endTime?: string }) => {
         const newBlockedSlot: BlockedSlot = {
             id: Date.now(),
@@ -625,13 +799,12 @@ const App: React.FC = () => {
         showToast('Horário bloqueado com sucesso!', 'success');
         setIsBlockerModalOpen(false);
     }, [setBlockedSlots, showToast]);
-
+    
     // Booking Request Handlers
     const handleApproveRequest = useCallback((requestToApprove: Appointment) => {
         // Change status to 'scheduled' and add to main appointments
         const approvedAppointment = { ...requestToApprove, status: 'scheduled' as const };
         setAppointments(prev => [...prev, approvedAppointment].sort((a,b) => a.datetime.getTime() - b.datetime.getTime()));
-
         // Remove from requests
         setAppointmentRequests(prev => prev.filter(req => req.id !== requestToApprove.id));
         
@@ -643,12 +816,12 @@ const App: React.FC = () => {
         setAppointmentRequests(prev => prev.filter(req => req.id !== requestId));
         showToast('Solicitação rejeitada.', 'success');
     }, [setAppointmentRequests, showToast]);
-    
+
     // Client Sync Handler
     const handleImportClientsFromAppointments = useCallback(() => {
         const existingClientPhones = new Set(clients.map(c => c.phone.replace(/\D/g, '')));
         const newClientsMap = new Map<string, Omit<Client, 'id'>>();
-
+        
         appointments.forEach(appt => {
             const sanitizedPhone = appt.clientPhone.replace(/\D/g, '');
             if (sanitizedPhone && !existingClientPhones.has(sanitizedPhone) && !newClientsMap.has(sanitizedPhone)) {
@@ -681,7 +854,6 @@ const App: React.FC = () => {
         }
     }, [appointments, clients, showModal, showToast, setClients, closeModal]);
 
-
     // Settings Handlers
     const handleExportData = useCallback(() => {
         try {
@@ -694,6 +866,8 @@ const App: React.FC = () => {
                 logoUrl,
                 currentTheme,
                 professionals,
+                paymentLinks,
+                paymentProofs,
             };
             const dataStr = JSON.stringify(dataToExport, null, 2);
             const blob = new Blob([dataStr], { type: 'application/json' });
@@ -710,7 +884,7 @@ const App: React.FC = () => {
             console.error(e);
             showModal('Erro de Exportação', 'Não foi possível gerar o arquivo de backup.');
         }
-    }, [appointments, clients, blockedSlots, services, monthlyPackage, logoUrl, currentTheme, professionals, showToast, showModal]);
+    }, [appointments, clients, blockedSlots, services, monthlyPackage, logoUrl, currentTheme, professionals, paymentLinks, paymentProofs, showToast, showModal]);
 
     const handleImportData = useCallback((data: any) => {
         try {
@@ -724,6 +898,8 @@ const App: React.FC = () => {
                 setLogoUrl(data.logoUrl || '/logo.png');
                 setCurrentTheme(data.currentTheme || 'pink');
                 setProfessionals(data.professionals || {});
+                setPaymentLinks(data.paymentLinks || {});
+                setPaymentProofs(data.paymentProofs || []);
                 showToast('Dados restaurados com sucesso!', 'success');
             } else {
                  throw new Error("Formato de arquivo inválido.");
@@ -731,13 +907,14 @@ const App: React.FC = () => {
         } catch(e: any) {
              showModal('Erro de Importação', `Falha ao restaurar dados. Detalhe: ${e.message}`);
         }
-    }, [setAppointments, setClients, setBlockedSlots, setServices, setMonthlyPackage, setLogoUrl, setCurrentTheme, setProfessionals, showToast, showModal]);
-    
+    }, [setAppointments, setClients, setBlockedSlots, setServices, setMonthlyPackage, setLogoUrl, setCurrentTheme, setProfessionals, setPaymentLinks, setPaymentProofs, showToast, showModal]);
+
 
     // --- RENDER LOGIC ---
-
+    
     const renderActiveView = () => {
         if (!currentUser) return null; // Should not happen if LoginScreen guard is working
+
         switch (activeView) {
             case 'agenda':
                 return (
@@ -793,6 +970,19 @@ const App: React.FC = () => {
                 );
             case 'financeiro':
                 return <FinancialsView financialData={financialData} />;
+            case 'payments':
+                return <PaymentsView 
+                            appointments={appointments} 
+                            clients={clients} 
+                            onMarkAsPaid={handleMarkAsPaid} 
+                            paymentLinks={paymentLinks}
+                            onUpdatePaymentLinks={setPaymentLinks}
+                            paymentProofs={paymentProofs}
+                            onUpdatePaymentProofs={setPaymentProofs}
+                            showToast={showToast}
+                            showModal={showModal}
+                            closeModal={closeModal}
+                        />;
             case 'services':
                 return <ServicesView services={services} onUpdateService={handleUpdateService} monthlyPackage={monthlyPackage} onUpdatePackage={setMonthlyPackage} />;
             case 'settings':
@@ -821,13 +1011,17 @@ const App: React.FC = () => {
                         </div>
 
                         <ThemeSwitcher currentTheme={currentTheme} onThemeChange={setCurrentTheme} />
+
                         <LogoUploader currentLogo={logoUrl} onLogoChange={(url) => setLogoUrl(url || '/logo.png')} onError={showModal} />
+
                         <CollapsibleSection title="Backup e Restauração">
                             <BackupRestore onExport={handleExportData} onImport={handleImportData} onError={showModal} />
                         </CollapsibleSection>
+                        
                          <CollapsibleSection title="Gerenciar Profissionais">
                             <UserManagement showToast={showToast} showModal={showModal} services={services} professionals={professionals} onUsersChange={setProfessionals} />
                         </CollapsibleSection>
+                        
                         <CollapsibleSection title="Notificações Push">
                             <NotificationManager />
                         </CollapsibleSection>
@@ -835,7 +1029,7 @@ const App: React.FC = () => {
                 );
         }
     };
-    
+
     // Login Screen Guard
     if (!currentUser) {
         return <LoginScreen onLogin={handleLogin} showToast={showToast} />;
@@ -846,7 +1040,7 @@ const App: React.FC = () => {
         <div ref={appContainerRef} className="bg-[var(--background)] min-h-screen text-[var(--text-body)] transition-colors duration-500 pb-20">
             <div className={`p-4 sm:p-6 transition-all duration-500 ${headerStyle ? '' : 'bg-[var(--primary)]'}`}>
                 <Header 
-                    logoUrl={logoUrl} 
+                    logoUrl={logoUrl}
                     headerStyle={headerStyle}
                     notificationAppointments={notificationAppointments}
                     bookingRequests={appointmentRequests}
@@ -864,6 +1058,7 @@ const App: React.FC = () => {
                     { label: 'Agenda', view: 'agenda' },
                     { label: 'Clientes', view: 'clients' }, 
                     { label: 'Financeiro', view: 'financeiro' },
+                    { label: 'Pagamentos', view: 'payments' },
                     { label: 'Serviços', view: 'services' }, 
                     { label: 'Configurações', view: 'settings' }
                 ] as const).map(item => (
@@ -888,7 +1083,7 @@ const App: React.FC = () => {
             </main>
 
             {/* Floating Action Button */}
-            {!['settings', 'services', 'financeiro'].includes(activeView) && !isFormVisible && !isClientFormVisible && (
+            {!['settings', 'services', 'financeiro', 'payments'].includes(activeView) && !isFormVisible && !isClientFormVisible && (
                 <button
                     onClick={() => activeView === 'clients' ? handleOpenClientForm(null) : handleOpenForm(null)}
                     className="fab"
@@ -911,6 +1106,7 @@ const App: React.FC = () => {
                         appointments={appointments}
                         blockedSlots={blockedSlots}
                         onMarkAsDelayed={handleMarkAsDelayed}
+                        onCompleteAppointment={handleCompleteAppointment}
                         services={services}
                         clients={clients}
                         onViewClientHistory={handleViewClientHistory}
@@ -918,6 +1114,8 @@ const App: React.FC = () => {
                         currentUser={currentUser}
                         showToast={showToast}
                         monthlyPackagePrice={monthlyPackage.price}
+                        prefilledData={prefilledDataForNewAppointment}
+                        onFormReady={() => setPrefilledDataForNewAppointment(null)}
                     />
                 }
             </div>
@@ -959,6 +1157,45 @@ const App: React.FC = () => {
                 showToast={showToast}
                 currentUser={currentUser}
             />
+
+            {/* Pending Appointment Review Modal */}
+            {currentReviewAppointment && (
+                <Modal
+                    isOpen={!!currentReviewAppointment}
+                    title="Agendamento Pendente"
+                    message={`O que deseja fazer com o agendamento de ${currentReviewAppointment.clientName} do dia ${currentReviewAppointment.datetime.toLocaleDateString('pt-BR')}?`}
+                    onClose={() => setCurrentReviewAppointment(null)}
+                    buttons={[
+                        { text: 'Reagendar', style: 'secondary', onClick: () => {
+                            handleOpenForm(currentReviewAppointment);
+                            setCurrentReviewAppointment(null);
+                        }},
+                        { text: 'Cancelar', style: 'danger', onClick: () => {
+                            handleUpdateAppointment({ ...currentReviewAppointment, status: 'cancelled' });
+                            setCurrentReviewAppointment(null);
+                        }},
+                        { text: 'Finalizar', style: 'primary', onClick: () => {
+                            handleCompleteAppointment(currentReviewAppointment);
+                            // setCurrentReviewAppointment is handled by handleCompleteAppointment
+                        }},
+                    ]}
+                />
+            )}
+            
+            {/* Payment Confirmation Modal */}
+            {appointmentToComplete && (
+                 <Modal
+                    isOpen={!!appointmentToComplete}
+                    title="Confirmar Pagamento"
+                    message={`O agendamento de ${appointmentToComplete.clientName} foi pago?`}
+                    onClose={() => setAppointmentToComplete(null)}
+                    buttons={[
+                         { text: 'Não, marcar pendente', style: 'secondary', onClick: () => handleConfirmPayment('pending')},
+                         { text: 'Sim, foi pago', style: 'primary', onClick: () => handleConfirmPayment('paid')},
+                    ]}
+                />
+            )}
+
 
             <Modal {...modalInfo} onClose={closeModal} />
             

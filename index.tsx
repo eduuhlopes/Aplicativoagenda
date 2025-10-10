@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import PublicBookingPage from './components/PublicBookingPage';
+import PublicPaymentPage from './components/PublicPaymentPage';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -14,6 +15,9 @@ const renderApp = () => {
     const path = window.location.pathname;
     if (path.startsWith('/agendar')) {
         return <PublicBookingPage />;
+    }
+    if (path.startsWith('/pagar/')) {
+        return <PublicPaymentPage />;
     }
     return <App />;
 };

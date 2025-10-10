@@ -27,7 +27,7 @@ const ArrowUpIcon = () => (
 );
 const ArrowDownIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7 7" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
     </svg>
 );
 
@@ -96,7 +96,7 @@ const ClientHistoryDetails: React.FC<ClientHistoryDetailsProps> = ({ client, app
                 {/* Stats */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 text-center border-t border-[var(--border)] pt-5">
                     <div>
-                        <p className="text-sm text-[var(--secondary)] uppercase font-bold">Total Gasto</p>
+                        <p className="text-sm text-[var(--secondary)] uppercase font-bold">Total Pago</p>
                         <p className="font-extrabold text-2xl text-[var(--success)]">{client.totalSpent.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
                     </div>
                     <div>
@@ -142,7 +142,16 @@ const ClientHistoryDetails: React.FC<ClientHistoryDetailsProps> = ({ client, app
                                         <p className="text-sm text-[var(--secondary)]">{appt.services.map(s => s.name).join(', ')}</p>
                                     </div>
                                     <div className="flex sm:flex-col items-end gap-2 sm:gap-1 w-full sm:w-auto text-right">
-                                        {getStatusChip(appt.status)}
+                                        <div className="flex items-center gap-2">
+                                            {appt.status === 'completed' && (
+                                                <span className={`px-2 py-1 text-xs font-bold rounded-full ${
+                                                    appt.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                                }`}>
+                                                    {appt.paymentStatus === 'paid' ? 'Pago' : 'Pendente'}
+                                                </span>
+                                            )}
+                                            {getStatusChip(appt.status)}
+                                        </div>
                                         <p className="font-bold text-lg text-[var(--success)]">{totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
                                     </div>
                                 </div>

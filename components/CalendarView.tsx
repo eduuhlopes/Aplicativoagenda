@@ -44,6 +44,12 @@ const getContrastColor = (hexcolor: string): string => {
   return (yiq >= 128) ? '#4A235A' : '#FFFFFF';
 };
 
+const CheckCircleIcon: React.FC<{className?: string}> = ({className}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-5 w-5 text-green-500"} viewBox="0 0 20 20" fill="currentColor">
+      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+    </svg>
+);
+
 
 const CalendarView: React.FC<CalendarViewProps> = ({ appointments, blockedSlots, onEditAppointment, onUpdateAppointment, newlyAddedAppointmentId, professionals, currentUser }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -190,7 +196,7 @@ const AgendaListView: React.FC<ViewProps> = ({ date, appointments, blockedSlots,
         const events: { [key: string]: (Appointment | { type: 'blocked'; slot: BlockedSlot })[] } = {};
         weekDays.forEach(day => {
             const dayString = day.toDateString();
-            const dayAppointments = appointments.filter(a => new Date(a.datetime).toDateString() === dayString && !['completed', 'cancelled'].includes(a.status));
+            const dayAppointments = appointments.filter(a => new Date(a.datetime).toDateString() === dayString && a.status !== 'cancelled');
             const dayBlocked = blockedSlots
                 .filter(s => new Date(s.date).toDateString() === dayString)
                 .map(slot => ({ type: 'blocked' as const, slot }));
@@ -242,19 +248,24 @@ const AgendaListView: React.FC<ViewProps> = ({ date, appointments, blockedSlots,
                                 const appt = event as Appointment;
                                 const professional = professionals.find(p => p.username === appt.professionalUsername);
                                 const isNew = appt.id === newlyAddedAppointmentId;
+                                const isComplete = appt.status === 'completed';
                                 const professionalColor = professional?.color || 'var(--primary)';
                                 return (
                                     <div 
                                         key={appt.id} 
                                         onClick={() => onEditAppointment(appt)} 
-                                        className={`flex items-center gap-4 p-3 bg-white hover:bg-[var(--highlight)] cursor-pointer border-l-4 rounded-r-lg shadow-sm ${isNew ? 'animate-new-item' : ''}`}
-                                        style={{ borderColor: professionalColor }}
+                                        className={`flex items-center gap-4 p-3 bg-white hover:bg-[var(--highlight)] cursor-pointer border-l-4 rounded-r-lg shadow-sm transition-opacity ${isNew ? 'animate-new-item' : ''} ${isComplete ? 'opacity-60' : ''}`}
+                                        style={{ borderColor: isComplete ? '#9ca3af' : professionalColor }}
                                     >
                                         <div className="font-semibold text-[var(--text-dark)] w-20 text-center">
                                              {appt.datetime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                                         </div>
                                         <div className="flex-grow">
-                                            <p className="font-bold text-[var(--text-dark)]">{appt.isPackageAppointment && '📦 '}{appt.clientName}</p>
+                                            <p className={`font-bold text-[var(--text-dark)] flex items-center gap-2 ${isComplete ? 'line-through' : ''}`}>
+                                                {isComplete && <CheckCircleIcon className="w-4 h-4 text-gray-500" />}
+                                                {appt.isPackageAppointment && '📦 '}
+                                                {appt.clientName}
+                                            </p>
                                             <p className="text-sm text-[var(--secondary)]">{appt.services.map(s => s.name).join(', ')}</p>
                                         </div>
                                         {professional && (
@@ -299,7 +310,7 @@ const MonthView: React.FC<ViewProps & { onDayClick: (day: Date) => void }> = ({ 
                 {calendarDays.map((dayInfo, i) => {
                     if (!dayInfo.date) return <div key={`empty-${i}`} className="calendar-day-cell other-month border border-[var(--border)] rounded-md"></div>;
 
-                    const dayAppointments = appointments.filter(a => new Date(a.datetime).toDateString() === dayInfo.date!.toDateString() && !['completed', 'cancelled'].includes(a.status));
+                    const dayAppointments = appointments.filter(a => new Date(a.datetime).toDateString() === dayInfo.date!.toDateString() && a.status !== 'cancelled');
                     const isBlocked = blockedSlots.some(s => s.isFullDay && new Date(s.date).toDateString() === dayInfo.date!.toDateString());
                     const isToday = dayInfo.date.toDateString() === new Date().toDateString();
 
@@ -310,10 +321,11 @@ const MonthView: React.FC<ViewProps & { onDayClick: (day: Date) => void }> = ({ 
                             <div className="mt-1 space-y-1">
                                 {dayAppointments.slice(0, 3).map(a => {
                                      const isNew = a.id === newlyAddedAppointmentId;
+                                     const isComplete = a.status === 'completed';
                                      const professional = professionals.find(p => p.username === a.professionalUsername);
                                      const professionalColor = professional?.color || 'var(--primary)';
                                      return (
-                                        <div key={a.id} onClick={(e) => { e.stopPropagation(); onEditAppointment(a); }} className={`flex items-center gap-1.5 appointment-pill ${isNew ? 'animate-new-item' : ''}`} style={{ backgroundColor: professionalColor, color: getContrastColor(professionalColor) }}>
+                                        <div key={a.id} onClick={(e) => { e.stopPropagation(); onEditAppointment(a); }} className={`flex items-center gap-1.5 appointment-pill ${isNew ? 'animate-new-item' : ''} ${isComplete ? 'opacity-60' : ''}`} style={{ backgroundColor: isComplete ? '#9ca3af' : professionalColor, color: getContrastColor(isComplete ? '#9ca3af' : professionalColor) }}>
                                             {professional && <span className="text-xs font-bold opacity-75">{getInitials(professional.name)}</span>}
                                             <span className="truncate flex-grow">{a.isPackageAppointment && '📦 '}{a.clientName}</span>
                                         </div>
@@ -335,7 +347,7 @@ const TimelineView: React.FC<ViewProps & { isDynamicHeight?: boolean }> = ({ dat
     const timelineRef = React.useRef<HTMLDivElement>(null);
 
     const dayAppointments = appointments
-        .filter(a => new Date(a.datetime).toDateString() === date.toDateString() && !['completed', 'cancelled'].includes(a.status))
+        .filter(a => new Date(a.datetime).toDateString() === date.toDateString() && a.status !== 'cancelled')
         .sort((a, b) => a.datetime.getTime() - b.datetime.getTime());
 
     const dayBlockedSlots = blockedSlots.filter(s => new Date(s.date).toDateString() === date.toDateString());
@@ -507,20 +519,21 @@ const TimelineView: React.FC<ViewProps & { isDynamicHeight?: boolean }> = ({ dat
                 const { top, height } = getPositionAndHeight(a.datetime, a.endTime);
                 const professional = professionals.find(p => p.username === a.professionalUsername);
                 const isNew = a.id === newlyAddedAppointmentId;
+                const isComplete = a.status === 'completed';
                 const professionalColor = professional?.color || 'var(--primary)';
                 return (
                     <div
                         key={a.id}
-                        draggable="true"
-                        onDragStart={(e) => handleDragStart(e, a)}
+                        draggable={!isComplete}
+                        onDragStart={(e) => !isComplete && handleDragStart(e, a)}
                         onDragEnd={handleDragEnd}
                         onClick={() => onEditAppointment(a)}
-                        className={`absolute w-[95%] left-[2.5%] p-2 rounded-md text-white text-xs z-10 shadow-lg cursor-grab opacity-90 hover:opacity-100 transition-opacity flex flex-col justify-start ${isNew ? 'animate-new-item' : ''}`}
-                        style={{ top: `${top}px`, height: `${height}px`, backgroundColor: professionalColor, color: getContrastColor(professionalColor) }}
+                        className={`absolute w-[95%] left-[2.5%] p-2 rounded-md text-xs z-10 shadow-lg flex flex-col justify-start transition-all ${isNew ? 'animate-new-item' : ''} ${isComplete ? 'opacity-60 hover:opacity-80 cursor-pointer' : 'opacity-90 hover:opacity-100 cursor-grab'}`}
+                        style={{ top: `${top}px`, height: `${height}px`, backgroundColor: isComplete ? '#9ca3af' : professionalColor, color: getContrastColor(isComplete ? '#9ca3af' : professionalColor) }}
                         title={`${a.clientName} - ${a.services.map(s => s.name).join(', ')}`}
                     >
                         <div className="flex justify-between items-start">
-                             <p className="font-bold flex-grow">{a.isPackageAppointment && '📦 '}{a.clientName}</p>
+                             <p className={`font-bold flex-grow ${isComplete ? 'line-through' : ''}`}>{a.isPackageAppointment && '📦 '}{a.clientName}</p>
                              {professional && <span className="text-xs font-bold opacity-75 flex-shrink-0" title={professional.name}>{getInitials(professional.name)}</span>}
                         </div>
                         <p className="truncate">{a.services.map(s => s.name).join(', ')}</p>
