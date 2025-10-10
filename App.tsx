@@ -48,12 +48,15 @@ const SparklesIcon: React.FC<{className?: string}> = ({ className }) => (
 );
 
 // --- MODAL FOR PENDING PAST APPOINTMENTS ---
-const PendingAppointmentsModal: React.FC<{
+interface PendingAppointmentsModalProps {
     isOpen: boolean;
     onClose: () => void;
     appointments: Appointment[];
     onBulkUpdate: (appointmentIds: number[], status: 'completed' | 'cancelled') => void;
-}> = ({ isOpen, onClose, appointments, onBulkUpdate }) => {
+    onReschedule: (appointment: Appointment) => void;
+}
+
+const PendingAppointmentsModal: React.FC<PendingAppointmentsModalProps> = ({ isOpen, onClose, appointments, onBulkUpdate, onReschedule }) => {
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
     useEffect(() => {
@@ -92,9 +95,17 @@ const PendingAppointmentsModal: React.FC<{
         onBulkUpdate(selectedIds, 'cancelled');
     };
 
+    const handleReschedule = () => {
+        if (selectedIds.length !== 1) return;
+        const apptToReschedule = appointments.find(a => a.id === selectedIds[0]);
+        if (apptToReschedule) {
+            onReschedule(apptToReschedule);
+        }
+    };
+
     return (
         <div 
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-70 animate-backdrop-in"
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-80 animate-backdrop-in"
             onClick={onClose}
         >
             <div 
@@ -140,10 +151,17 @@ const PendingAppointmentsModal: React.FC<{
                     ))}
                 </div>
 
-                <div className="mt-6 flex flex-col sm:flex-row justify-end gap-3">
+                <div className="mt-6 flex flex-col sm:flex-row justify-end gap-3 flex-wrap">
                     <button onClick={onClose} className="px-6 py-2 bg-gray-300 text-gray-800 font-bold rounded-lg shadow-md hover:bg-gray-400">Decidir Depois</button>
                     <button onClick={handleCancel} disabled={selectedIds.length === 0} className="px-6 py-2 bg-[var(--danger)] text-white font-bold rounded-lg shadow-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
                         Cancelar Selecionados
+                    </button>
+                    <button 
+                        onClick={handleReschedule} 
+                        disabled={selectedIds.length !== 1} 
+                        title={selectedIds.length !== 1 ? 'Selecione exatamente 1 agendamento para reagendar' : ''}
+                        className="px-6 py-2 bg-[var(--info)] text-white font-bold rounded-lg shadow-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
+                        Reagendar (1)
                     </button>
                      <button onClick={handleFinalize} disabled={selectedIds.length === 0} className="px-6 py-2 bg-[var(--success)] text-white font-bold rounded-lg shadow-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
                         Finalizar Selecionados
@@ -478,6 +496,11 @@ const App: React.FC = () => {
         setIsFormVisible(false);
         setAppointmentToEdit(null);
     }, []);
+
+    const handleRescheduleForgotten = useCallback((appointment: Appointment) => {
+        setIsPendingModalOpen(false);
+        handleOpenForm(appointment);
+    }, [handleOpenForm]);
     
     // Smart Scheduler Assistant
     const handleAssistantSchedule = useCallback((data: Partial<Appointment>) => {
@@ -1105,6 +1128,7 @@ const App: React.FC = () => {
                 onClose={() => setIsPendingModalOpen(false)}
                 appointments={pendingPastAppointments}
                 onBulkUpdate={handleBulkUpdateStatus}
+                onReschedule={handleRescheduleForgotten}
             />
 
             <Modal {...modalInfo} onClose={closeModal} />
