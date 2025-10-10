@@ -47,6 +47,113 @@ const SparklesIcon: React.FC<{className?: string}> = ({ className }) => (
     </svg>
 );
 
+// --- MODAL FOR PENDING PAST APPOINTMENTS ---
+const PendingAppointmentsModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    appointments: Appointment[];
+    onBulkUpdate: (appointmentIds: number[], status: 'completed' | 'cancelled') => void;
+}> = ({ isOpen, onClose, appointments, onBulkUpdate }) => {
+    const [selectedIds, setSelectedIds] = useState<number[]>([]);
+
+    useEffect(() => {
+        if (isOpen) {
+            setSelectedIds(appointments.map(a => a.id)); // Select all by default
+        }
+    }, [isOpen, appointments]);
+
+    if (!isOpen) return null;
+
+    const WarningIcon: React.FC = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-yellow-500" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M8.257 3.099c.636-1.1 2.152-1.1 2.788 0l5.426 9.398c.636 1.1-.218 2.502-1.394 2.502H4.225c-1.176 0-2.03-1.402-1.394-2.502l5.426-9.398zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+        </svg>
+    );
+
+    const handleToggle = (id: number) => {
+        setSelectedIds(prev =>
+            prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+        );
+    };
+
+    const handleToggleAll = () => {
+        if (selectedIds.length === appointments.length) {
+            setSelectedIds([]);
+        } else {
+            setSelectedIds(appointments.map(a => a.id));
+        }
+    };
+
+    const handleFinalize = () => {
+        onBulkUpdate(selectedIds, 'completed');
+    };
+
+    const handleCancel = () => {
+        onBulkUpdate(selectedIds, 'cancelled');
+    };
+
+    return (
+        <div 
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-70 animate-backdrop-in"
+            onClick={onClose}
+        >
+            <div 
+                className="bg-[var(--surface-opaque)] rounded-2xl shadow-2xl p-6 m-4 max-w-2xl w-full animate-modal-in flex flex-col"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="flex items-center gap-3 mb-4">
+                    <WarningIcon />
+                    <h3 className="text-2xl font-bold text-[var(--text-dark)]">Agendamentos Pendentes</h3>
+                </div>
+                
+                <p className="text-[var(--text-body)] mb-4">Encontramos {appointments.length} agendamento(s) no passado que não foram finalizados ou cancelados. O que você gostaria de fazer com eles?</p>
+
+                <div className="flex-grow overflow-y-auto max-h-[50vh] space-y-2 p-3 bg-[var(--highlight)] border border-[var(--border)] rounded-lg">
+                    <div className="flex items-center pb-2 border-b border-[var(--border)]">
+                        <input
+                            type="checkbox"
+                            id="select-all-pending"
+                            checked={selectedIds.length === appointments.length && appointments.length > 0}
+                            onChange={handleToggleAll}
+                            className="h-5 w-5 rounded text-[var(--primary)] focus:ring-[var(--primary-hover)]"
+                        />
+                        <label htmlFor="select-all-pending" className="ml-3 font-semibold text-[var(--text-dark)] cursor-pointer">Selecionar Todos</label>
+                    </div>
+                    {appointments.map(appt => (
+                        <div key={appt.id} className="flex items-center p-2 rounded-md hover:bg-white cursor-pointer" onClick={() => handleToggle(appt.id)}>
+                            <input
+                                type="checkbox"
+                                checked={selectedIds.includes(appt.id)}
+                                onChange={(e) => {
+                                    e.stopPropagation(); // prevent label click from firing twice
+                                    handleToggle(appt.id);
+                                }}
+                                className="h-5 w-5 rounded text-[var(--primary)] focus:ring-[var(--primary-hover)]"
+                            />
+                            <div className="ml-3 flex-grow">
+                                <p className="font-semibold text-[var(--text-dark)]">{appt.clientName}</p>
+                                <p className="text-sm text-[var(--secondary)]">
+                                    {appt.datetime.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} - {appt.services.map(s => s.name).join(', ')}
+                                </p>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="mt-6 flex flex-col sm:flex-row justify-end gap-3">
+                    <button onClick={onClose} className="px-6 py-2 bg-gray-300 text-gray-800 font-bold rounded-lg shadow-md hover:bg-gray-400">Decidir Depois</button>
+                    <button onClick={handleCancel} disabled={selectedIds.length === 0} className="px-6 py-2 bg-[var(--danger)] text-white font-bold rounded-lg shadow-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
+                        Cancelar Selecionados
+                    </button>
+                     <button onClick={handleFinalize} disabled={selectedIds.length === 0} className="px-6 py-2 bg-[var(--success)] text-white font-bold rounded-lg shadow-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
+                        Finalizar Selecionados
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 // Helper to parse dates from JSON
 const dateTimeReviver = (key: string, value: any) => {
@@ -117,6 +224,10 @@ const App: React.FC = () => {
     const [isNotificationPopoverOpen, setIsNotificationPopoverOpen] = useState(false);
     const [headerStyle, setHeaderStyle] = useState<{ background: string; color: string; notificationBg: string; } | null>(null);
     const appContainerRef = useRef<HTMLDivElement>(null);
+    
+    // State for the new pending appointments modal
+    const [isPendingModalOpen, setIsPendingModalOpen] = useState(false);
+    const [pendingPastAppointments, setPendingPastAppointments] = useState<Appointment[]>([]);
 
     // --- EFFECTS ---
 
@@ -131,6 +242,25 @@ const App: React.FC = () => {
             console.error("Failed to load user from session storage", e);
         }
     }, []);
+
+    // Check for pending past-due appointments on load
+    useEffect(() => {
+        if (currentUser) {
+            const now = new Date();
+            // Check for appointments that are older than 1 hour to give some grace period
+            const gracePeriod = now.getTime() - (60 * 60 * 1000); 
+
+            const pending = appointments.filter(appt => 
+                ['scheduled', 'confirmed', 'delayed'].includes(appt.status) &&
+                new Date(appt.datetime).getTime() < gracePeriod
+            );
+
+            if (pending.length > 0) {
+                setPendingPastAppointments(pending);
+                setIsPendingModalOpen(true);
+            }
+        }
+    }, [currentUser, appointments]);
     
     // Helper to generate lighter/darker shades for CSS variables.
     const adjustRgbColor = (color: {r: number, g: number, b: number}, amount: number) => {
@@ -587,6 +717,16 @@ const App: React.FC = () => {
         }
     }, [showToast, setAppointments, showNotificationOptionsModal]);
 
+    const handleBulkUpdateStatus = useCallback((appointmentIds: number[], status: 'completed' | 'cancelled') => {
+        setAppointments(prev =>
+            prev.map(appt =>
+                appointmentIds.includes(appt.id) ? { ...appt, status } : appt
+            ).sort((a, b) => a.datetime.getTime() - b.datetime.getTime())
+        );
+        showToast(`${appointmentIds.length} agendamento(s) foram atualizados!`, 'success');
+        setIsPendingModalOpen(false);
+    }, [setAppointments, showToast]);
+
     const handleMarkAsDelayed = useCallback((appointment: Appointment) => {
         setAppointments(prev => prev.map(a => a.id === appointment.id ? { ...a, status: 'delayed' } : a));
         showToast(`${appointment.clientName} marcada como atrasada.`, 'success');
@@ -958,6 +1098,13 @@ const App: React.FC = () => {
                 professionals={professionalsList}
                 showToast={showToast}
                 currentUser={currentUser}
+            />
+
+            <PendingAppointmentsModal
+                isOpen={isPendingModalOpen}
+                onClose={() => setIsPendingModalOpen(false)}
+                appointments={pendingPastAppointments}
+                onBulkUpdate={handleBulkUpdateStatus}
             />
 
             <Modal {...modalInfo} onClose={closeModal} />
