@@ -1,10 +1,8 @@
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 const { db, saveDatabase } = require('./db');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors());
@@ -158,17 +156,6 @@ app.delete('/api/profissionais/:username', (req, res) => {
     res.status(204).send();
 });
 
-// --- SERVIR ARQUIVOS DO FRONTEND ---
-
-// Servir arquivos estáticos (como .tsx, .css, .png) da pasta raiz do projeto.
-// Esta linha deve vir ANTES da rota catch-all.
-app.use(express.static(path.join(__dirname, '..')));
-
-// Rota catch-all: Para qualquer requisição GET que NÃO seja para a API,
-// serve o index.html. Isso permite que o roteamento do React funcione.
-app.get(/^(?!\/api).*/, (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'index.html'));
-});
 
 // Export the app instance for Vercel's serverless environment
 module.exports = app;
