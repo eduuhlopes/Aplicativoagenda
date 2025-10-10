@@ -157,5 +157,13 @@ app.delete('/api/profissionais/:username', (req, res) => {
 });
 
 
+// --- Inicia o servidor para desenvolvimento local ---
+// A Vercel ignora esta parte e usa a exportação 'app'
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`[API] Servidor rodando na porta ${PORT}`);
+});
+
+
 // Export the app instance for Vercel's serverless environment
 module.exports = app;
