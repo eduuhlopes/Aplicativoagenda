@@ -1,6 +1,8 @@
 import { Appointment, Client, Professional, StoredProfessional } from '../types';
 
-const API_BASE_URL = 'http://localhost:3001/api';
+// Altera a URL para ser relativa. Assim, o frontend fará requisições para a mesma
+// origem (domínio) de onde foi servido (ex: /api/clientes).
+const API_BASE_URL = '/api';
 
 // Helper function to handle fetch responses and parse dates
 const reviver = (key: string, value: any) => {
