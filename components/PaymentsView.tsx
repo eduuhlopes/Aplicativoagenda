@@ -1,6 +1,3 @@
-
-
-
 import React, { useMemo, useState } from 'react';
 import { Appointment, Client, PaymentLink, PaymentProof, ModalButton } from '../types';
 import CollapsibleSection from './CollapsibleSection';
