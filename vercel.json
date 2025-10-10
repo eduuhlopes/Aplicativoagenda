@@ -3,17 +3,26 @@
   "builds": [
     {
       "src": "backend/server.js",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": [
+          "../App.tsx",
+          "../components/**",
+          "../constants.ts",
+          "../hooks/**",
+          "../index.html",
+          "../index.tsx",
+          "../manifest.json",
+          "../metadata.json",
+          "../sw.js",
+          "../types.ts",
+          "../utils/**",
+          "../logo.png"
+        ]
+      }
     }
   ],
   "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/backend/server.js"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+    { "source": "/(.*)", "destination": "/backend/server.js" }
   ]
 }
