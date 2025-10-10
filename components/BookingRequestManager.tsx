@@ -17,7 +17,7 @@ const BookingRequestManager: React.FC<BookingRequestManagerProps> = ({ isOpen, o
 
     return (
         <div 
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-70 animate-backdrop-in"
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70] animate-backdrop-in"
             onClick={onClose}
         >
             <div 

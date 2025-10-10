@@ -71,7 +71,7 @@ const ScheduleModal: React.FC<{
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-70 animate-backdrop-in" onClick={onClose}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70] animate-backdrop-in" onClick={onClose}>
             <div className="bg-[var(--surface-opaque)] rounded-2xl shadow-2xl p-6 m-4 max-w-lg w-full animate-modal-in" onClick={e => e.stopPropagation()}>
                 <h3 className="text-2xl font-bold text-[var(--text-dark)] mb-4">Horários de {professionalName}</h3>
                 <div className="space-y-3">

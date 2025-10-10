@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GoogleGenerativeAI } from 'https://aistudiocdn.com/@google/generative-ai';
+import { GoogleGenAI, Type } from '@google/genai';
 import { Appointment, Professional, Service } from '../types';
 
 interface SmartSchedulerModalProps {
@@ -90,7 +90,8 @@ const SmartSchedulerModal: React.FC<SmartSchedulerModalProps> = ({ isOpen, onClo
         `;
 
         try {
-            const ai = new GoogleGenerativeAI({apiKey: process.env.API_KEY});
+            // FIX: Replaced deprecated GoogleGenerativeAI with GoogleGenAI.
+            const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
 
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
@@ -98,20 +99,22 @@ const SmartSchedulerModal: React.FC<SmartSchedulerModalProps> = ({ isOpen, onClo
                 config: {
                     systemInstruction,
                     responseMimeType: "application/json",
+                    // FIX: Used Type enum for schema definition.
                     responseSchema: {
-                        type: 'OBJECT',
+                        type: Type.OBJECT,
                         properties: {
-                            clientName: { type: 'STRING', description: "Nome da cliente." },
-                            services: { type: 'ARRAY', items: { type: 'STRING' }, description: "Lista de nomes de serviços solicitados." },
-                            professionalName: { type: 'STRING', description: "Nome da profissional solicitada. Pode ser null." },
-                            date: { type: 'STRING', description: `A data do agendamento. Pode ser uma data relativa como "hoje", "amanhã", ou o nome de um dia da semana. Ex: "amanhã"` },
-                            time: { type: 'STRING', description: `A hora do agendamento no formato HH:MM. Ex: "15:30"` }
+                            clientName: { type: Type.STRING, description: "Nome da cliente." },
+                            services: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Lista de nomes de serviços solicitados." },
+                            professionalName: { type: Type.STRING, description: "Nome da profissional solicitada. Pode ser null." },
+                            date: { type: Type.STRING, description: `A data do agendamento. Pode ser uma data relativa como "hoje", "amanhã", ou o nome de um dia da semana. Ex: "amanhã"` },
+                            time: { type: Type.STRING, description: `A hora do agendamento no formato HH:MM. Ex: "15:30"` }
                         }
                     }
                 }
             });
             
-            const resultJsonStr = response.text.trim();
+            // FIX: Removed .trim() as per guideline to use response.text directly.
+            const resultJsonStr = response.text;
             const result = JSON.parse(resultJsonStr);
             
             if (!result.clientName || !result.services || !result.date || !result.time) {
@@ -176,7 +179,7 @@ const SmartSchedulerModal: React.FC<SmartSchedulerModalProps> = ({ isOpen, onClo
 
     return (
         <div 
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-70 animate-backdrop-in"
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70] animate-backdrop-in"
             onClick={onClose}
         >
             <div 
