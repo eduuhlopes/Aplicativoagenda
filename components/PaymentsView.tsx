@@ -1,5 +1,6 @@
 
 
+
 import React, { useMemo, useState } from 'react';
 import { Appointment, Client, PaymentLink, PaymentProof, ModalButton } from '../types';
 import CollapsibleSection from './CollapsibleSection';
@@ -13,10 +14,8 @@ interface PaymentsViewProps {
     paymentProofs: PaymentProof[];
     onUpdatePaymentProofs: React.Dispatch<React.SetStateAction<PaymentProof[]>>;
     showToast: (message: string, type?: 'success' | 'error') => void;
-    // FIX: Added optional `buttons` parameter to `showModal` to match the function signature in App.tsx.
     showModal: (title: string, message: string, onConfirm?: () => void, buttons?: ModalButton[]) => void;
     closeModal: () => void;
-    // FIX: Add setAppointments prop to update appointments state on manual proof approval.
     setAppointments: React.Dispatch<React.SetStateAction<Appointment[]>>;
 }
 
@@ -47,6 +46,8 @@ const ProofsIcon: React.FC<{className?: string}> = ({className}) => (
 
 
 const PaymentsView: React.FC<PaymentsViewProps> = ({ appointments, clients, onMarkAsPaid, paymentLinks, onUpdatePaymentLinks, paymentProofs, onUpdatePaymentProofs, showToast, showModal, closeModal, setAppointments }) => {
+    const [reviewingProof, setReviewingProof] = useState<PaymentProof | null>(null);
+    const [partialAmount, setPartialAmount] = useState('');
 
     const debtsByClient = useMemo(() => {
         const pendingAppointments = appointments.filter(a => a.status === 'completed' && a.paymentStatus === 'pending');
@@ -78,6 +79,74 @@ const PaymentsView: React.FC<PaymentsViewProps> = ({ appointments, clients, onMa
             .sort((a, b) => (a.validatedAt?.getTime() || Date.now()) - (b.validatedAt?.getTime() || Date.now()));
     }, [paymentProofs]);
 
+    // --- Proof Review Handlers ---
+
+    const handleConfirmTotal = (proof: PaymentProof) => {
+        onUpdatePaymentProofs(prev => prev.map(p => p.id === proof.id ? {...p, status: 'validated', validatedAt: new Date()} : p));
+        setAppointments(prev =>
+            prev.map(a => proof.appointmentIds.includes(a.id) ? { ...a, paymentStatus: 'paid' } : a)
+        );
+        showToast('Pagamento total confirmado!', 'success');
+        setReviewingProof(null);
+    };
+
+    const handleConfirmPartial = (proof: PaymentProof) => {
+        const amountPaid = parseFloat(partialAmount.replace(',', '.'));
+        if (isNaN(amountPaid) || amountPaid <= 0 || amountPaid >= proof.totalDue) {
+            showToast('Valor parcial inválido. Deve ser maior que zero e menor que o total devido.', 'error');
+            return;
+        }
+
+        onUpdatePaymentProofs(prev => prev.map(p => p.id === proof.id ? {...p, status: 'validated', validatedAt: new Date()} : p));
+        setAppointments(prev => prev.map(a => proof.appointmentIds.includes(a.id) ? { ...a, paymentStatus: 'paid' } : a));
+
+        const remainingDebt = proof.totalDue - amountPaid;
+        const client = clients.find(c => c.id === proof.clientId);
+        const originalAppointments = appointments.filter(a => proof.appointmentIds.includes(a.id));
+
+        if (client && originalAppointments.length > 0) {
+            const newDebtAppointment: Appointment = {
+                id: Date.now(),
+                clientName: client.name,
+                clientPhone: client.phone,
+                clientEmail: client.email,
+                services: [{ name: 'Saldo Remanescente', value: remainingDebt, duration: 0, category: 'Ajuste' }],
+                datetime: new Date(),
+                endTime: new Date(),
+                status: 'completed',
+                professionalUsername: originalAppointments[0].professionalUsername,
+                paymentStatus: 'pending',
+            };
+            setAppointments(prev => [...prev, newDebtAppointment]);
+            showToast('Pagamento parcial registrado com sucesso!', 'success');
+        } else {
+            showToast('Erro ao criar débito remanescente.', 'error');
+        }
+
+        setReviewingProof(null);
+        setPartialAmount('');
+    };
+
+    const handleRejectProof = (proof: PaymentProof) => {
+        onUpdatePaymentProofs(prev => prev.map(p => p.id === proof.id ? { ...p, status: 'rejected' } : p));
+        setReviewingProof(null);
+        const link = `${window.location.origin}/pagar/${proof.id}`;
+        showModal(
+            'Comprovante Rejeitado',
+            `O comprovante foi marcado como rejeitado. Você pode reenviar o link de pagamento para a cliente:\n\n${link}`,
+            undefined,
+            [
+                { text: 'Fechar', style: 'secondary', onClick: closeModal },
+                { text: 'Copiar Link', style: 'primary', onClick: () => {
+                    navigator.clipboard.writeText(link);
+                    showToast('Link copiado!', 'success');
+                    closeModal();
+                }}
+            ]
+        );
+    };
+
+    // --- Other Handlers ---
 
     const handleSendWhatsAppReminder = (client: Client, total: number) => {
         const phone = client.phone.replace(/\D/g, '');
@@ -116,26 +185,53 @@ const PaymentsView: React.FC<PaymentsViewProps> = ({ appointments, clients, onMa
             ]
         );
     };
-    
-    const handleManualProofApproval = (proof: PaymentProof) => {
-        // Mark proof as manually approved
-        onUpdatePaymentProofs(prev => prev.map(p => p.id === proof.id ? {...p, status: 'validated', validatedAt: new Date()} : p));
-        // Mark all associated appointments as paid
-        onUpdatePaymentProofs(prev => {
-            const updatedProofs = prev.map(p => {
-                if (p.id === proof.id) {
-                    return { ...p, status: 'validated' as const, validatedAt: new Date() };
-                }
-                return p;
-            });
-            return updatedProofs;
-        });
 
-        // FIX: 'setAppointments' was not defined. It is now passed as a prop.
-        setAppointments(prev =>
-            prev.map(a => proof.appointmentIds.includes(a.id) ? { ...a, paymentStatus: 'paid' } : a)
+    const renderProofReviewModal = () => {
+        if (!reviewingProof) return null;
+
+        const client = clients.find(c => c.id === reviewingProof.clientId);
+        return (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-70 animate-backdrop-in" onClick={() => setReviewingProof(null)}>
+                <div className="bg-[var(--surface-opaque)] rounded-2xl shadow-2xl p-6 m-4 max-w-lg w-full animate-modal-in" onClick={e => e.stopPropagation()}>
+                    <h3 className="text-2xl font-bold text-[var(--text-dark)] mb-4">Revisar Comprovante</h3>
+                    <div className="flex flex-col md:flex-row gap-4 mb-4">
+                        <a href={reviewingProof.imageDataUrl} target="_blank" rel="noopener noreferrer">
+                            <img src={reviewingProof.imageDataUrl} alt="Comprovante" className="w-full md:w-40 h-auto object-cover rounded-md shadow-md" />
+                        </a>
+                        <div className="space-y-1 text-sm">
+                            <p><strong>Cliente:</strong> {client?.name || 'Não encontrada'}</p>
+                            <p><strong>Total Devido:</strong> <span className="font-bold">{reviewingProof.totalDue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></p>
+                            <p><strong>Valor Informado:</strong> <span className="font-bold text-blue-600">{reviewingProof.clientEnteredValue?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) || 'N/A'}</span></p>
+                            <p><strong>IA Detectou:</strong> <span className="font-bold text-purple-600">{(reviewingProof.extractedValue ?? 0) > 0 ? reviewingProof.extractedValue?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '...'}</span></p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        {/* Ação 1: Pagamento Parcial */}
+                        <div className="p-3 bg-[var(--highlight)] border border-dashed rounded-lg">
+                            <label htmlFor="partial-amount" className="block text-sm font-semibold text-[var(--text-dark)] mb-2">Registrar Pagamento Parcial:</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="number"
+                                    id="partial-amount"
+                                    value={partialAmount}
+                                    onChange={e => setPartialAmount(e.target.value)}
+                                    placeholder="Ex: 50,00"
+                                    className="w-full h-10 px-3 bg-white border border-[var(--border)] rounded-lg"
+                                />
+                                <button onClick={() => handleConfirmPartial(reviewingProof)} className="px-4 py-2 bg-[var(--info)] text-white text-sm font-bold rounded-lg shadow-sm whitespace-nowrap">Registrar Parcial</button>
+                            </div>
+                        </div>
+                        {/* Ação 2: Outras Ações */}
+                        <div className="flex flex-col sm:flex-row gap-2 justify-between">
+                             <button onClick={() => handleRejectProof(reviewingProof)} className="px-4 py-2 bg-[var(--danger)] text-white font-bold rounded-lg shadow-sm">Rejeitar Comprovante</button>
+                            <button onClick={() => handleConfirmTotal(reviewingProof)} className="px-4 py-2 bg-[var(--success)] text-white font-bold rounded-lg shadow-sm">Confirmar Pagamento Total</button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
         );
-        showToast('Comprovante aprovado manualmente!', 'success');
     };
 
 
@@ -153,7 +249,7 @@ const PaymentsView: React.FC<PaymentsViewProps> = ({ appointments, clients, onMa
             {pendingProofs.length > 0 && (
                  <div className="mb-8">
                     <CollapsibleSection
-                        title={`Comprovantes Pendentes (${pendingProofs.length})`}
+                        title={`Comprovantes para Revisão (${pendingProofs.length})`}
                         icon={<ProofsIcon className="h-6 w-6" />}
                         defaultOpen={true}
                     >
@@ -176,7 +272,7 @@ const PaymentsView: React.FC<PaymentsViewProps> = ({ appointments, clients, onMa
                                             <p className="text-xs text-gray-500 italic">{statusInfo?.text}</p>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <button onClick={() => handleManualProofApproval(proof)} className="px-3 py-1 bg-[var(--success)] text-white text-sm font-bold rounded-lg shadow-sm">Aprovar Manualmente</button>
+                                            <button onClick={() => { setReviewingProof(proof); setPartialAmount(''); }} className="px-3 py-1 bg-[var(--primary)] text-white text-sm font-bold rounded-lg shadow-sm">Revisar</button>
                                         </div>
                                     </div>
                                 );
@@ -243,6 +339,7 @@ const PaymentsView: React.FC<PaymentsViewProps> = ({ appointments, clients, onMa
                     </div>
                 )}
             </div>
+            {renderProofReviewModal()}
         </div>
     );
 };
