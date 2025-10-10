@@ -1,29 +1,22 @@
 {
-  "name": "spaco-delas-agendador",
+  "name": "spaço-delas---agendador",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"vite\" \"npm:dev:api\"",
-    "dev:api": "nodemon api/index.js",
-    "start:api": "node api/index.js",
+    "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/genai": "^0.14.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "cors": "^2.8.5",
-    "express": "^4.19.2"
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "@google/genai": "latest"
   },
   "devDependencies": {
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
-    "typescript": "^5.5.3",
-    "vite": "^5.3.3",
-    "concurrently": "^8.2.2",
-    "nodemon": "^3.1.4"
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
   }
 }
