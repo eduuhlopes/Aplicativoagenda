@@ -1,187 +1,248 @@
-import React, { useState } from 'react';
-import { GoogleGenAI, Type } from '@google/genai';
-import { PaymentProof, Client, Appointment } from '../types';
+
+
+import React, { useMemo, useState } from 'react';
+import { Appointment, Client, PaymentLink, PaymentProof, ModalButton } from '../types';
+import CollapsibleSection from './CollapsibleSection';
 
 interface PaymentsViewProps {
-    proofs: PaymentProof[];
-    clients: Client[];
     appointments: Appointment[];
-    onUpdateProof: (proof: PaymentProof) => void;
-    onMarkAppointmentsAsPaid: (appointmentIds: number[]) => void;
+    clients: Client[];
+    onMarkAsPaid: (appointmentId: number) => void;
+    paymentLinks: Record<string, PaymentLink>;
+    onUpdatePaymentLinks: React.Dispatch<React.SetStateAction<Record<string, PaymentLink>>>;
+    paymentProofs: PaymentProof[];
+    onUpdatePaymentProofs: React.Dispatch<React.SetStateAction<PaymentProof[]>>;
     showToast: (message: string, type?: 'success' | 'error') => void;
+    // FIX: Added optional `buttons` parameter to `showModal` to match the function signature in App.tsx.
+    showModal: (title: string, message: string, onConfirm?: () => void, buttons?: ModalButton[]) => void;
+    closeModal: () => void;
+    // FIX: Add setAppointments prop to update appointments state on manual proof approval.
+    setAppointments: React.Dispatch<React.SetStateAction<Appointment[]>>;
 }
 
-const LoadingSpinner: React.FC<{className?: string}> = ({className}) => (
-    <svg className={`animate-spin h-5 w-5 ${className || 'text-white'}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+const PaymentsIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 inline-block ml-3 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H4a3 3 0 00-3 3v8a3 3 0 003 3z" />
     </svg>
 );
 
-const SparklesIcon: React.FC<{className?: string}> = ({className}) => (
-    <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-5 w-5"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.293 2.293a1 1 0 010 1.414L10 12l-2.293-2.293a1 1 0 010-1.414L10 6m5 4l2.293-2.293a1 1 0 000-1.414L15 6m-5 4l-2.293 2.293a1 1 0 000 1.414L10 18l2.293-2.293a1 1 0 000-1.414L10 12z" />
+const WhatsAppIcon: React.FC<{className?: string}> = ({className}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-5 w-5"} viewBox="0 0 20 20" fill="currentColor">
+      <path d="M5.5 2A2.5 2.5 0 003 4.5v11A2.5 2.5 0 005.5 18h9a2.5 2.5 0 002.5-2.5v-11A2.5 2.5 0 0014.5 2h-9zM8 6a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1zm1 3a1 1 0 100 2h2a1 1 0 100-2H9z"/>
     </svg>
 );
 
-const PaymentsView: React.FC<PaymentsViewProps> = ({ proofs, clients, appointments, onUpdateProof, onMarkAppointmentsAsPaid, showToast }) => {
-    const [validatingProofId, setValidatingProofId] = useState<string | null>(null);
-    const [viewingProof, setViewingProof] = useState<PaymentProof | null>(null);
+const LinkIcon: React.FC<{className?: string}> = ({className}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-5 w-5"} viewBox="0 0 20 20" fill="currentColor">
+      <path fillRule="evenodd" d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0m-4.242 6.828a2 2 0 01-2.828 0l-3-3a2 2 0 112.828-2.828l3 3a2 2 0 010 2.828zM9 11a1 1 0 102 0 1 1 0 00-2 0z" clipRule="evenodd" />
+    </svg>
+);
 
-    const pendingProofs = proofs.filter(p => p.status === 'pending_validation');
-    const processedProofs = proofs.filter(p => p.status !== 'pending_validation').sort((a,b) => (b.validatedAt?.getTime() || 0) - (a.validatedAt?.getTime() || 0));
+const ProofsIcon: React.FC<{className?: string}> = ({className}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-5 w-5"} viewBox="0 0 20 20" fill="currentColor">
+        <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+    </svg>
+);
 
-    const getClientName = (clientId: number) => clients.find(c => c.id === clientId)?.name || 'Cliente Desconhecido';
 
-    const handleValidateWithAI = async (proof: PaymentProof) => {
-        setValidatingProofId(proof.id);
-        try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const base64ImageData = proof.imageDataUrl.split(',')[1];
-            
-            if (!base64ImageData) throw new Error("Imagem inválida.");
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: { 
-                    parts: [
-                        { text: "Extraia o valor numérico exato do pagamento principal deste comprovante. Responda apenas com o valor." },
-                        { inlineData: { mimeType: 'image/jpeg', data: base64ImageData } }
-                    ]
-                },
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: Type.OBJECT,
-                        properties: {
-                            value: { type: Type.NUMBER, description: "O valor numérico do pagamento, por exemplo: 150.50" }
-                        }
+const PaymentsView: React.FC<PaymentsViewProps> = ({ appointments, clients, onMarkAsPaid, paymentLinks, onUpdatePaymentLinks, paymentProofs, onUpdatePaymentProofs, showToast, showModal, closeModal, setAppointments }) => {
+
+    const debtsByClient = useMemo(() => {
+        const pendingAppointments = appointments.filter(a => a.status === 'completed' && a.paymentStatus === 'pending');
+        
+        const debts: Record<string, { client: Client | undefined, debts: Appointment[], total: number }> = {};
+
+        pendingAppointments.forEach(appt => {
+            const clientPhone = appt.clientPhone;
+            if (!debts[clientPhone]) {
+                debts[clientPhone] = {
+                    client: clients.find(c => c.phone === clientPhone),
+                    debts: [],
+                    total: 0
+                };
+            }
+            debts[clientPhone].debts.push(appt);
+            debts[clientPhone].total += appt.services.reduce((sum, s) => sum + s.value, 0);
+        });
+
+        return Object.values(debts).sort((a,b) => b.total - a.total);
+
+    }, [appointments, clients]);
+
+    const totalDebt = useMemo(() => debtsByClient.reduce((sum, client) => sum + client.total, 0), [debtsByClient]);
+    
+    const pendingProofs = useMemo(() => {
+        return paymentProofs
+            .filter(p => p.status === 'rejected' || p.status === 'manual_approval' || p.status === 'pending_validation')
+            .sort((a, b) => (a.validatedAt?.getTime() || Date.now()) - (b.validatedAt?.getTime() || Date.now()));
+    }, [paymentProofs]);
+
+
+    const handleSendWhatsAppReminder = (client: Client, total: number) => {
+        const phone = client.phone.replace(/\D/g, '');
+        const message = `Olá ${client.name}! 😊 Passando para lembrar sobre o valor pendente de ${total.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})} referente aos seus agendamentos. Agradecemos a sua atenção! ✨`;
+        window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(message)}`, '_blank');
+    };
+
+    const handleGeneratePaymentLink = (client: Client, debts: Appointment[], total: number) => {
+        const linkId = `pagamento-${client.id}-${Date.now()}`;
+        const newLink: PaymentLink = {
+            id: linkId,
+            clientId: client.id,
+            appointmentIds: debts.map(d => d.id),
+            totalDue: total,
+            createdAt: new Date()
+        };
+        onUpdatePaymentLinks(prev => ({ ...prev, [linkId]: newLink }));
+        
+        const fullUrl = `${window.location.origin}/pagar/${linkId}`;
+        
+        showModal(
+            "Link de Pagamento Gerado!",
+            `Compartilhe este link com ${client.name}:\n\n${fullUrl}`,
+            undefined,
+            [
+                { text: 'Fechar', style: 'secondary', onClick: closeModal },
+                {
+                    text: 'Copiar Link',
+                    style: 'primary',
+                    onClick: () => {
+                        navigator.clipboard.writeText(fullUrl);
+                        showToast('Link copiado para a área de transferência!', 'success');
+                        closeModal();
                     }
                 }
-            });
-            
-            const result = JSON.parse(response.text);
-            const extractedValue = result.value;
-
-            if (typeof extractedValue !== 'number') {
-                throw new Error("A IA não retornou um valor numérico válido.");
-            }
-            
-            onUpdateProof({ ...proof, extractedValue });
-            showToast(`IA extraiu o valor de R$ ${extractedValue.toFixed(2)}`, 'success');
-
-        } catch (error) {
-            console.error("AI Validation Error:", error);
-            showToast("Falha na validação com IA.", 'error');
-        } finally {
-            setValidatingProofId(null);
-        }
-    };
-
-    const handleApproval = (proof: PaymentProof, status: 'validated' | 'manual_approval') => {
-        onMarkAppointmentsAsPaid(proof.appointmentIds);
-        onUpdateProof({ ...proof, status, validatedAt: new Date() });
-        showToast(`Pagamento de ${getClientName(proof.clientId)} aprovado!`, 'success');
-    };
-    
-    const handleRejection = (proof: PaymentProof) => {
-        onUpdateProof({ ...proof, status: 'rejected', validatedAt: new Date() });
-        showToast(`Pagamento de ${getClientName(proof.clientId)} rejeitado.`, 'error');
-    };
-
-    const renderProofCard = (proof: PaymentProof, isPending: boolean) => {
-        const valueMatches = proof.extractedValue !== undefined && proof.clientEnteredValue !== undefined && proof.extractedValue === proof.clientEnteredValue;
-        const valueClose = proof.extractedValue !== undefined && proof.clientEnteredValue !== undefined && Math.abs(proof.extractedValue - proof.clientEnteredValue) < 0.02; // Check for floating point issues
-        const canAutoApprove = (valueMatches || valueClose) && proof.extractedValue === proof.totalDue;
-        
-        let statusBadge;
-        switch(proof.status) {
-            case 'validated':
-            case 'manual_approval':
-                statusBadge = <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Aprovado</span>;
-                break;
-            case 'rejected':
-                 statusBadge = <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">Rejeitado</span>;
-                break;
-            default:
-                statusBadge = <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">Pendente</span>;
-        }
-
-        return (
-            <div key={proof.id} className="bg-white p-4 rounded-lg shadow-sm border border-[var(--border)]">
-                <div className="flex flex-col sm:flex-row justify-between gap-4">
-                    {/* Info Section */}
-                    <div className="flex-grow space-y-2">
-                        <div className="flex justify-between items-start">
-                             <p className="font-bold text-lg text-[var(--text-dark)]">{getClientName(proof.clientId)}</p>
-                             {statusBadge}
-                        </div>
-                        <div className="text-sm grid grid-cols-2 gap-x-4 gap-y-1 text-[var(--text-body)]">
-                            <span className="font-semibold">Valor Devido:</span> <span className="font-mono text-right">{proof.totalDue.toLocaleString('pt-BR', {style:'currency', currency: 'BRL'})}</span>
-                            <span className="font-semibold">Valor Informado:</span> <span className="font-mono text-right">{proof.clientEnteredValue?.toLocaleString('pt-BR', {style:'currency', currency: 'BRL'})}</span>
-                            <span className="font-semibold">Valor (IA):</span> 
-                            <span className={`font-mono text-right font-bold ${valueMatches ? 'text-green-600' : 'text-amber-600'}`}>
-                                {proof.extractedValue !== undefined ? proof.extractedValue.toLocaleString('pt-BR', {style:'currency', currency: 'BRL'}) : '-'}
-                            </span>
-                        </div>
-                    </div>
-                    {/* Actions Section */}
-                    {isPending && (
-                        <div className="flex-shrink-0 flex flex-col gap-2 w-full sm:w-40">
-                             <button onClick={() => setViewingProof(proof)} className="w-full px-3 py-2 text-sm font-semibold text-[var(--primary)] bg-white border border-[var(--border)] rounded-md hover:bg-[var(--highlight)]">Ver Comprovante</button>
-                             <button onClick={() => handleValidateWithAI(proof)} disabled={validatingProofId === proof.id} className="w-full px-3 py-2 text-sm font-semibold text-white bg-[var(--accent)] rounded-md hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2">
-                                {validatingProofId === proof.id ? <LoadingSpinner /> : <SparklesIcon />} Validar c/ IA
-                            </button>
-                            <button onClick={() => handleApproval(proof, 'validated')} disabled={!canAutoApprove} className="w-full px-3 py-2 text-sm font-semibold text-white bg-[var(--success)] rounded-md hover:opacity-90 disabled:opacity-50 disabled:grayscale">Aprovar Auto</button>
-                            <div className="flex gap-2">
-                               <button onClick={() => handleApproval(proof, 'manual_approval')} className="w-full px-3 py-2 text-sm font-semibold text-white bg-[var(--secondary)] rounded-md hover:opacity-90">Aprovar Manual</button>
-                               <button onClick={() => handleRejection(proof)} className="w-full px-3 py-2 text-sm font-semibold text-white bg-[var(--danger)] rounded-md hover:opacity-90">Rejeitar</button>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
+            ]
         );
     };
+    
+    const handleManualProofApproval = (proof: PaymentProof) => {
+        // Mark proof as manually approved
+        onUpdatePaymentProofs(prev => prev.map(p => p.id === proof.id ? {...p, status: 'validated', validatedAt: new Date()} : p));
+        // Mark all associated appointments as paid
+        onUpdatePaymentProofs(prev => {
+            const updatedProofs = prev.map(p => {
+                if (p.id === proof.id) {
+                    return { ...p, status: 'validated' as const, validatedAt: new Date() };
+                }
+                return p;
+            });
+            return updatedProofs;
+        });
+
+        // FIX: 'setAppointments' was not defined. It is now passed as a prop.
+        setAppointments(prev =>
+            prev.map(a => proof.appointmentIds.includes(a.id) ? { ...a, paymentStatus: 'paid' } : a)
+        );
+        showToast('Comprovante aprovado manualmente!', 'success');
+    };
+
 
     return (
-        <div className="space-y-6">
-            <h2 className="text-3xl font-bold text-[var(--text-dark)] text-center">Validação de Pagamentos</h2>
+        <div className="max-w-4xl mx-auto">
+            <h2 className="text-3xl font-bold text-[var(--text-dark)] text-center mb-2 flex items-center justify-center">
+                Controle de Pagamentos
+                <PaymentsIcon />
+            </h2>
+             <p className="text-center text-lg text-[var(--text-body)] mb-6">
+                Total pendente: <span className="font-bold text-[var(--danger)]">{totalDebt.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+             </p>
             
-            {/* Pending Proofs */}
-            <div>
-                <h3 className="text-xl font-semibold text-[var(--text-dark)] mb-3">Pendentes de Validação</h3>
-                <div className="space-y-3">
-                    {pendingProofs.length > 0 ? (
-                        pendingProofs.map(p => renderProofCard(p, true))
-                    ) : (
-                        <p className="text-center italic text-[var(--secondary)] py-4">Nenhum comprovante pendente.</p>
-                    )}
-                </div>
-            </div>
-            
-            {/* Processed Proofs */}
-            <div>
-                 <h3 className="text-xl font-semibold text-[var(--text-dark)] mb-3">Histórico de Validações</h3>
-                 <div className="space-y-3 max-h-96 overflow-y-auto pr-2 -mr-2">
-                     {processedProofs.length > 0 ? (
-                        processedProofs.map(p => renderProofCard(p, false))
-                    ) : (
-                        <p className="text-center italic text-[var(--secondary)] py-4">Nenhum comprovante processado.</p>
-                    )}
-                 </div>
-            </div>
-
-            {/* Image Viewer Modal */}
-            {viewingProof && (
-                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-backdrop-in" onClick={() => setViewingProof(null)}>
-                    <div className="p-4 bg-white rounded-lg shadow-xl max-w-lg w-full" onClick={e => e.stopPropagation()}>
-                        <h4 className="font-bold mb-2">Comprovante de {getClientName(viewingProof.clientId)}</h4>
-                        <img src={viewingProof.imageDataUrl} alt="Comprovante" className="max-w-full max-h-[80vh] mx-auto" />
-                        <button onClick={() => setViewingProof(null)} className="mt-4 w-full py-2 bg-[var(--primary)] text-white font-bold rounded-lg">Fechar</button>
-                    </div>
+            {/* Pending Proofs Section */}
+            {pendingProofs.length > 0 && (
+                 <div className="mb-8">
+                    <CollapsibleSection
+                        title={`Comprovantes Pendentes (${pendingProofs.length})`}
+                        icon={<ProofsIcon className="h-6 w-6" />}
+                        defaultOpen={true}
+                    >
+                        <div className="space-y-3 pt-3">
+                             {pendingProofs.map(proof => {
+                                const client = clients.find(c => c.id === proof.clientId);
+                                const statusInfo = {
+                                    rejected: { text: "Rejeitado pela IA", color: "border-red-400" },
+                                    pending_validation: { text: "Aguardando Validação da IA...", color: "border-yellow-400" },
+                                    manual_approval: { text: "Aprovação Manual Necessária", color: "border-blue-400" }
+                                }[proof.status];
+                                 return (
+                                    <div key={proof.id} className={`flex flex-col sm:flex-row justify-between items-start gap-3 p-3 bg-white rounded-md border-l-4 ${statusInfo?.color || 'border-gray-400'}`}>
+                                        <img src={proof.imageDataUrl} alt="Comprovante" className="w-16 h-16 object-cover rounded-md cursor-pointer" onClick={() => window.open(proof.imageDataUrl)}/>
+                                        <div className="flex-grow">
+                                            <p className="font-semibold text-md text-[var(--text-dark)]">{client?.name || 'Cliente desconhecida'}</p>
+                                            <p className="font-bold text-sm text-[var(--secondary)]">Devido: {proof.totalDue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                                            {proof.clientEnteredValue && <p className="font-bold text-sm text-blue-600">Informado: {proof.clientEnteredValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>}
+                                            {proof.status === 'rejected' && <p className="text-xs font-bold text-red-600">IA detectou: {(proof.extractedValue ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>}
+                                            <p className="text-xs text-gray-500 italic">{statusInfo?.text}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button onClick={() => handleManualProofApproval(proof)} className="px-3 py-1 bg-[var(--success)] text-white text-sm font-bold rounded-lg shadow-sm">Aprovar Manualmente</button>
+                                        </div>
+                                    </div>
+                                );
+                             })}
+                        </div>
+                    </CollapsibleSection>
                 </div>
             )}
+            
+            {/* Debts by Client Section */}
+            <div className="space-y-4">
+                {debtsByClient.length > 0 ? (
+                    debtsByClient.map(({ client, debts, total }) => {
+                        if (!client) return null;
+                        const isOverdue = debts.some(d => (new Date().getTime() - d.datetime.getTime()) > 24 * 60 * 60 * 1000);
+                        return (
+                            <div key={client.id} className="bg-white p-4 rounded-lg shadow-sm border border-[var(--border)]">
+                                <CollapsibleSection
+                                    title={client.name}
+                                    defaultOpen={debts.length < 4}
+                                    icon={
+                                        <div className="text-right">
+                                            <p className="font-semibold text-lg text-[var(--danger)]">{total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                                        </div>
+                                    }
+                                >
+                                    <div className="space-y-3 pt-3">
+                                        {debts.map(debt => (
+                                            <div key={debt.id} className="flex justify-between items-center gap-2 p-3 bg-[var(--highlight)] rounded-md border-l-4 border-[var(--warning)]">
+                                                <p className="flex-grow font-semibold text-[var(--text-dark)] truncate" title={debt.services.map(s => s.name).join(' + ')}>
+                                                    {debt.services.map(s => s.name).join(' + ')}
+                                                </p>
+                                                <div className="flex items-center gap-3 flex-shrink-0">
+                                                    <p className="font-bold text-md text-[var(--text-dark)]">
+                                                        {debt.services.reduce((s,i)=>s+i.value,0).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}
+                                                    </p>
+                                                    <button
+                                                        onClick={() => onMarkAsPaid(debt.id)}
+                                                        className="px-3 py-1 bg-[var(--success)] text-white text-sm font-bold rounded-lg shadow-sm hover:opacity-90 active:scale-95"
+                                                    >
+                                                        Pago
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        <div className="flex flex-col sm:flex-row gap-2 pt-3 border-t border-dashed">
+                                            {isOverdue && (
+                                                <button onClick={() => handleSendWhatsAppReminder(client, total)} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-green-500 text-white text-sm font-bold rounded-lg shadow-sm">
+                                                    <WhatsAppIcon /> Lembrar via WhatsApp
+                                                </button>
+                                            )}
+                                            <button onClick={() => handleGeneratePaymentLink(client, debts, total)} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-500 text-white text-sm font-bold rounded-lg shadow-sm">
+                                               <LinkIcon /> Gerar Link de Pagamento
+                                            </button>
+                                        </div>
+                                    </div>
+                                </CollapsibleSection>
+                            </div>
+                        )
+                    })
+                ) : (
+                    <div className="text-center py-10 bg-white rounded-lg border border-dashed border-[var(--border)]">
+                        <p className="text-lg text-[var(--secondary)] italic">Nenhuma pendência de pagamento encontrada. Tudo em dia! 🎉</p>
+                    </div>
+                )}
+            </div>
         </div>
     );
 };

@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { EnrichedClient, Appointment, AppointmentStatus, Client } from '../types';
 import ClientItem from './ClientItem';

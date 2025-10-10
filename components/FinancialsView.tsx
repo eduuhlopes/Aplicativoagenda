@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { FinancialData } from '../types';
 import MetricCard from './MetricCard';

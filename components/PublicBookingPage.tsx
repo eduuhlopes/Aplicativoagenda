@@ -5,7 +5,7 @@ import * as emailService from '../utils/emailService';
 
 // Helper to parse dates from JSON while loading
 const dateTimeReviver = (key: string, value: any) => {
-    if ((key === 'datetime' || key === 'endTime' || key === 'date' || key === 'createdAt') && typeof value === 'string') {
+    if ((key === 'datetime' || key === 'endTime' || key === 'date') && typeof value === 'string') {
         const date = new Date(value);
         if (!isNaN(date.getTime())) return date;
     }

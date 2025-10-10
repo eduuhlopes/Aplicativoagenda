@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { ModalButton } from '../types';
 
@@ -11,10 +10,9 @@ interface ModalProps {
     buttons?: ModalButton[];
     confirmText?: string;
     cancelText?: string;
-    children?: React.ReactNode;
 }
 
-const Modal: React.FC<ModalProps> = ({ isOpen, title, message, onClose, onConfirm, buttons, confirmText, cancelText, children }) => {
+const Modal: React.FC<ModalProps> = ({ isOpen, title, message, onClose, onConfirm, buttons, confirmText, cancelText }) => {
     if (!isOpen) return null;
 
     const getButtonClass = (style: ModalButton['style']) => {
@@ -45,27 +43,22 @@ const Modal: React.FC<ModalProps> = ({ isOpen, title, message, onClose, onConfir
             onClick={onClose}
         >
             <div 
-                // FIX: Make modal wider when rendering children (forms) and render children if they exist.
-                className={`bg-[var(--surface-opaque)] rounded-2xl shadow-2xl p-6 m-4 ${children ? 'max-w-3xl' : 'max-w-sm'} w-full animate-modal-in`}
+                className="bg-[var(--surface-opaque)] rounded-2xl shadow-2xl p-6 m-4 max-w-sm w-full animate-modal-in"
                 onClick={(e) => e.stopPropagation()}
             >
-                {children ? children : (
-                    <>
-                        <h3 className="text-2xl font-bold text-[var(--text-dark)] mb-4">{title}</h3>
-                        <p className="text-md text-[var(--text-body)] mb-6 whitespace-pre-wrap">{message}</p>
-                        <div className="flex justify-end gap-3">
-                            {actionButtons.map((button, index) => (
-                                 <button
-                                    key={index}
-                                    onClick={button.onClick}
-                                    className={`px-6 py-2 font-bold rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all active:scale-95 ${getButtonClass(button.style)}`}
-                                >
-                                    {button.text}
-                                </button>
-                            ))}
-                        </div>
-                    </>
-                )}
+                <h3 className="text-2xl font-bold text-[var(--text-dark)] mb-4">{title}</h3>
+                <p className="text-md text-[var(--text-body)] mb-6 whitespace-pre-wrap">{message}</p>
+                <div className="flex justify-end gap-3">
+                    {actionButtons.map((button, index) => (
+                         <button
+                            key={index}
+                            onClick={button.onClick}
+                            className={`px-6 py-2 font-bold rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all active:scale-95 ${getButtonClass(button.style)}`}
+                        >
+                            {button.text}
+                        </button>
+                    ))}
+                </div>
             </div>
         </div>
     );
