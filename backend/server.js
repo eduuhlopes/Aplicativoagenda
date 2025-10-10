@@ -43,6 +43,32 @@ app.post('/api/agendamentos', (req, res) => {
   res.status(201).json(newAppointment); // Retorna o agendamento criado com status 201 (Created)
 });
 
+// [PUT] /api/agendamentos/:id - Atualiza um agendamento
+app.put('/api/agendamentos/:id', (req, res) => {
+  const appointmentId = parseInt(req.params.id, 10);
+  const updatedData = req.body;
+  
+  const appointmentIndex = db.appointments.findIndex(a => a.id === appointmentId);
+
+  if (appointmentIndex === -1) {
+    return res.status(404).json({ message: "Agendamento não encontrado." });
+  }
+
+  // Preserve the original ID, merge new data
+  const updatedAppointment = { 
+    ...db.appointments[appointmentIndex], 
+    ...updatedData,
+    id: appointmentId, // Ensure ID is not changed
+    datetime: new Date(updatedData.datetime), // Ensure dates are objects
+    endTime: new Date(updatedData.endTime),
+  };
+  
+  db.appointments[appointmentIndex] = updatedAppointment;
+  
+  console.log('Agendamento atualizado:', updatedAppointment.clientName);
+  res.status(200).json(updatedAppointment);
+});
+
 
 // --- API de Clientes ---
 
@@ -80,23 +106,38 @@ app.post('/api/clientes', (req, res) => {
   res.status(201).json(newClient);
 });
 
+// [PUT] /api/clientes/:id - Atualiza um cliente
+app.put('/api/clientes/:id', (req, res) => {
+    const clientId = parseInt(req.params.id, 10);
+    const updatedData = req.body;
+
+    const clientIndex = db.clients.findIndex(c => c.id === clientId);
+
+    if (clientIndex === -1) {
+        return res.status(404).json({ message: "Cliente não encontrado." });
+    }
+
+    const updatedClient = {
+        ...db.clients[clientIndex],
+        ...updatedData,
+        id: clientId,
+    };
+    db.clients[clientIndex] = updatedClient;
+    console.log('Cliente atualizado:', updatedClient.name);
+    res.status(200).json(updatedClient);
+});
+
 
 // --- API de Profissionais ---
 
 // [GET] /api/profissionais - Retorna todos os profissionais
 app.get('/api/profissionais', (req, res) => {
-  // O ideal é não retornar a senha
-  const professionalsWithoutPasswords = {};
-  for (const username in db.professionals) {
-    const { password, ...professionalData } = db.professionals[username];
-    professionalsWithoutPasswords[username] = { ...professionalData, username };
-  }
-  res.status(200).json(professionalsWithoutPasswords);
+  res.status(200).json(db.professionals);
 });
 
 // [POST] /api/profissionais - Cria um novo profissional
 app.post('/api/profissionais', (req, res) => {
-  const { username, name, password, role } = req.body;
+  const { username, name, password, role, ...rest } = req.body;
 
   // Validação
   if (!username || !name || !password || !role) {
@@ -113,13 +154,54 @@ app.post('/api/profissionais', (req, res) => {
     password, // Em um app real, isso seria hasheado
     role,
     assignedServices: [], // Começa sem serviços atribuídos
+    ...rest,
   };
 
   db.professionals[userKey] = newProfessional;
   console.log('Nova profissional adicionada:', newProfessional.name);
 
-  const { password: _, ...responseData } = newProfessional;
-  res.status(201).json({ ...responseData, username: userKey });
+  res.status(201).json({ ...newProfessional, username: userKey });
+});
+
+// [PUT] /api/profissionais/:username - Atualiza um profissional
+app.put('/api/profissionais/:username', (req, res) => {
+    const username = req.params.username.toLowerCase();
+    const { password, ...updatedData } = req.body;
+
+    if (!db.professionals[username]) {
+        return res.status(404).json({ message: "Profissional não encontrado." });
+    }
+
+    // Apenas atualiza a senha se uma nova for enviada
+    const newPassword = password ? password : db.professionals[username].password;
+
+    const updatedProfessional = {
+        ...db.professionals[username],
+        ...updatedData,
+        password: newPassword
+    };
+
+    db.professionals[username] = updatedProfessional;
+    console.log('Profissional atualizado:', updatedProfessional.name);
+    
+    res.status(200).json({ ...updatedProfessional, username });
+});
+
+// [DELETE] /api/profissionais/:username - Deleta um profissional
+app.delete('/api/profissionais/:username', (req, res) => {
+    const username = req.params.username.toLowerCase();
+
+    if (username === 'admin') {
+        return res.status(403).json({ message: "Não é permitido remover o administrador." });
+    }
+    
+    if (!db.professionals[username]) {
+        return res.status(404).json({ message: "Profissional não encontrado." });
+    }
+
+    delete db.professionals[username];
+    console.log('Profissional removido:', username);
+    res.status(204).send(); // No Content
 });
 
 

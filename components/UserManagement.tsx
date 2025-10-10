@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
-// FIX: Imported StoredProfessional type and removed unused Professional type.
 import { Service, StoredProfessional, WorkSchedule, WorkDay } from '../types';
 import { TIMES } from '../constants';
+import * as api from '../utils/api';
 
 interface ProfessionalManagementProps {
     showToast: (message: string, type?: 'success' | 'error') => void;
     showModal: (title: string, message: string, onConfirm?: () => void) => void;
     services: Service[];
-    // FIX: Changed props to use the correct StoredProfessional type.
     professionals: Record<string, StoredProfessional>;
     onUsersChange: React.Dispatch<React.SetStateAction<Record<string, StoredProfessional>>>;
 }
@@ -171,7 +170,7 @@ const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, show
         }
     }, [editingUsername, professionals]);
 
-    const handleFormSubmit = (e: React.FormEvent) => {
+    const handleFormSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         
         if (editingUsername) {
@@ -180,9 +179,7 @@ const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, show
                 showToast("O nome de exibição é obrigatório.", 'error');
                 return;
             }
-            const updatedUsers = { ...professionals };
-            updatedUsers[editingUsername] = {
-                ...updatedUsers[editingUsername], // Preserve original data
+            const professionalUpdateData: Partial<StoredProfessional> = {
                 name: formDisplayName.trim(),
                 role: formRole,
                 assignedServices: formAssignedServices,
@@ -191,14 +188,18 @@ const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, show
                 color: formColor,
                 workSchedule: formWorkSchedule,
             };
-            // Only update password if a new one is typed
             if (formPassword.trim()) {
-                updatedUsers[editingUsername].password = formPassword.trim();
+                professionalUpdateData.password = formPassword.trim();
             }
 
-            onUsersChange(updatedUsers);
-            showToast(`Profissional @${editingUsername} atualizada com sucesso!`, 'success');
-            cancelEdit();
+            try {
+                const updatedProfessional = await api.updateProfessional(editingUsername, professionalUpdateData);
+                onUsersChange(prev => ({...prev, [editingUsername]: updatedProfessional }));
+                showToast(`Profissional @${editingUsername} atualizada com sucesso!`, 'success');
+                cancelEdit();
+            } catch (error: any) {
+                 showToast(`Erro ao atualizar: ${error.message}`, 'error');
+            }
 
         } else {
             // --- ADD LOGIC ---
@@ -207,31 +208,31 @@ const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, show
                 showToast("Usuário, Nome e Senha são obrigatórios.", 'error');
                 return;
             }
-            if (professionals[username]) {
-                showToast("Este nome de usuário já existe.", 'error');
-                return;
-            }
             if (username.includes(' ')) {
                 showToast("Nome de usuário não pode conter espaços.", 'error');
                 return;
             }
 
-            const updatedUsers = {
-                ...professionals,
-                [username]: {
-                    name: formDisplayName.trim(),
-                    password: formPassword.trim(),
-                    role: formRole,
-                    assignedServices: formAssignedServices,
-                    bio: formBio.trim(),
-                    avatarUrl: formAvatarUrl.trim(),
-                    color: formColor,
-                    workSchedule: formWorkSchedule,
-                }
+            const newProfessionalData: StoredProfessional & { username: string } = {
+                username,
+                name: formDisplayName.trim(),
+                password: formPassword.trim(),
+                role: formRole,
+                assignedServices: formAssignedServices,
+                bio: formBio.trim(),
+                avatarUrl: formAvatarUrl.trim(),
+                color: formColor,
+                workSchedule: formWorkSchedule,
             };
-            onUsersChange(updatedUsers);
-            showToast(`Profissional @${username} adicionada com sucesso!`, 'success');
-            resetForm();
+
+            try {
+                const createdProfessional = await api.createProfessional(newProfessionalData);
+                onUsersChange(prev => ({...prev, [username]: createdProfessional }));
+                showToast(`Profissional @${username} adicionada com sucesso!`, 'success');
+                resetForm();
+            } catch (error: any) {
+                showToast(`Erro ao adicionar: ${error.message}`, 'error');
+            }
         }
     };
 
@@ -244,12 +245,20 @@ const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, show
         showModal(
             `Remover Profissional?`, 
             `Tem certeza que deseja remover @${username}? Os agendamentos e dados desta profissional NÃO serão apagados, mas ela não poderá mais acessar o sistema.`, 
-            () => {
-                const updatedUsers = { ...professionals };
-                delete updatedUsers[username];
-                onUsersChange(updatedUsers);
-                showToast(`Profissional @${username} removida.`, 'success');
-                setUserToDelete(null);
+            async () => {
+                try {
+                    await api.deleteProfessional(username);
+                    onUsersChange(prev => {
+                        const updatedUsers = { ...prev };
+                        delete updatedUsers[username];
+                        return updatedUsers;
+                    });
+                    showToast(`Profissional @${username} removida.`, 'success');
+                } catch(error: any) {
+                    showToast(`Erro ao remover: ${error.message}`, 'error');
+                } finally {
+                    setUserToDelete(null);
+                }
             }
         );
     };
@@ -350,8 +359,6 @@ const UserManagement: React.FC<ProfessionalManagementProps> = ({ showToast, show
                  <h3 className="text-xl font-semibold text-[var(--text-dark)] mb-3 text-center">Profissionais Existentes</h3>
                  <div className="space-y-2 max-h-48 overflow-y-auto pr-2 -mr-2">
                     {Object.entries(professionals).map(([username, userData]) => {
-                        // FIX: Cast userData from 'unknown' to 'StoredProfessional' to allow safe property access.
-                        // This resolves errors where properties like 'color', 'name', and 'role' were not found.
                         const professionalData = userData as StoredProfessional;
                         return (
                             <div key={username} className={`bg-white p-3 rounded-lg shadow flex items-center justify-between transition-all duration-500 ${userToDelete === username ? 'animate-fade-out' : ''}`}>
