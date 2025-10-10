@@ -170,6 +170,5 @@ app.get(/^(?!\/api).*/, (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}. Agora servindo também o frontend!`);
-});
+// Export the app instance for Vercel's serverless environment
+module.exports = app;
